@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://opensah.dev/sitemap.xml

@@ -1,0 +1,13 @@
+{
+  "name": "opensah-dev-site",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node tools/site.mjs serve",
+    "check": "node tools/site.mjs check"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
