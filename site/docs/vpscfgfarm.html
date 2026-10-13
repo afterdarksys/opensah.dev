@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>vpscfgfarm guide | OpenSAH / dev</title><meta name="description" content="Install and use vpscfgfarm: a governor, contracts, policies, runbooks, approvals and a journal in front of every command sent to an SSH fleet."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/vpscfgfarm.html"><meta property="og:type" content="website"><meta property="og:title" content="vpscfgfarm guide | OpenSAH / dev"><meta property="og:description" content="Install and use vpscfgfarm: a governor, contracts, policies, runbooks, approvals and a journal in front of every command sent to an SSH fleet."><meta property="og:url" content="https://opensah.dev/docs/vpscfgfarm.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Farm tool guides</p><h1>vpscfgfarm: contracted fleet changes.</h1><p>A door in front of production. Every command to the fleet goes through it, and the door decides: a governor, reviewed contracts and runbooks, typed approvals and a hash-chained journal.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html" aria-current="page">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a></aside><article class="docs-content">
+
+<span class="pill available">Available</span> <span class="pill">Tag v0.1.0</span> <span class="pill">Apache 2.0</span>
+<nav aria-label="On this page"><ul>
+<li><a href="#what">What it is</a></li>
+<li><a href="#requirements">Requirements</a></li>
+<li><a href="#install">Install</a></li>
+<li><a href="#quick-start">Quick start with the example estate</a></li>
+<li><a href="#concepts">Key concepts</a></li>
+<li><a href="#deploy-door">The contracted-deploy door</a></li>
+<li><a href="#vpsexec">vpsexec: gated ad-hoc commands</a></li>
+<li><a href="#approvals">Approvals, break-glass and grants</a></li>
+<li><a href="#plays">Plays and the runbook walker</a></li>
+<li><a href="#files">Files and locations</a></li>
+<li><a href="#integrations">Optional integrations</a></li>
+<li><a href="#fit">How it fits with the other tools</a></li>
+<li><a href="#links">Links</a></li>
+</ul></nav>
+
+<h2 id="what">What it is</h2>
+<p>vpscfgfarm is contract-based configuration and deployment safety for a fleet of Linux servers reached over SSH (Docker, docker compose, k3s). It has three doors: <code>vpscfg-control.py</code> for contracted deploys, <code>vpsexec</code> for gated ad-hoc commands, and <code>vpsrun</code> for running a reviewed sequence a human approves once. Every door reads one governor file, refuses by default, and journals what it allowed and what it refused. Use it when you, a small team or an agent working under a human's approval want every production command to pass through reviewed, tested, journaled code.</p>
+<div class="notice"><p><strong>What it is not.</strong> It is not a configuration-management system (it can drive Ansible behind the same gates), not a multi-tenant service, not a secrets store, and not a sandbox against a local user who can already edit the doors. It protects production from mistakes made through the door. It cannot stop someone who goes around it with raw SSH; <code>fleet changes</code> exists to notice when that happens. A semantically disastrous but ordinary command, approved by a human, is indistinguishable from intent: the doors make it slow, visible, bounded and recorded, not impossible.</p></div>
+
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li>Python 3.9 or newer, with PyYAML (hash-pinned in <code>requirements.txt</code>).</li>
+<li><code>ssh</code>, <code>rsync</code> and <code>tar</code> on the operator machine.</li>
+<li>Managed hosts: Linux servers reachable over SSH, each one a <code>Host</code> alias in <code>~/.ssh/config</code>.</li>
+<li>A real terminal for approvals. Mutating approvals and grants refuse without a TTY.</li>
+</ul>
+
+<h2 id="install">Install</h2>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>git clone https://github.com/afterdarksys/vpscfgfarm.git
+cd vpscfgfarm
+python3 -m pip install --require-hashes -r requirements.txt</code></pre></div>
+<h3 id="pin">Pin the interpreter</h3>
+<p>The three doors carry one shebang naming a real interpreter with <code>-I</code> (isolated mode). The committed shebang is the maintainer's machine, so point it at the interpreter that has PyYAML:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>tools/pin-interpreter.sh "$(python3 -c 'import os,sys;print(os.path.realpath(sys.executable))')"</code></pre></div>
+<p>It rewrites line 1 of <code>vpscfg-control.py</code>, <code>vpsexec</code> and <code>vpsrun</code>, and refuses unless the target is an absolute, real, executable binary that is not group- or world-writable and reports isolation under <code>-I</code>. Never use <code>#!/usr/bin/env</code>: it lets <code>PATH</code> choose the program that reads the governor. Start the doors by path (<code>./vpsexec</code>, or a symlink such as <code>~/bin/vpsexec</code>), not as <code>python3 vpsexec</code>.</p>
+<h3 id="verify-install">Verify the install</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>./vpscfg-control.py status
+python3 -m unittest discover -s tests</code></pre></div>
+<p>The repository ships no governor, so on a fresh clone <code>status</code> refuses with <code>control file missing — nothing runs without the governor</code>. That refusal is the expected first result: until you configure an estate, every door refuses. The test suite proves the refusals; CI treats a skipped test as a failure.</p>
+
+<h2 id="quick-start">Quick start with the example estate</h2>
+<p>The repository includes a fictional three-host estate in <code>contrib/example-estate/</code>:</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Host</th><th scope="col">Address</th><th scope="col">Posture</th><th scope="col">Role</th></tr></thead>
+<tbody>
+<tr><td><code>web1</code></td><td>192.0.2.10</td><td><code>frozen</code></td><td>Serves www.example.com, no failover. Also reachable as <code>web1.example.internal</code> (an <code>alias_of</code>).</td></tr>
+<tr><td><code>db1</code></td><td>192.0.2.20</td><td><code>lockdown</code></td><td>The database.</td></tr>
+<tr><td><code>edge1</code></td><td>198.51.100.5</td><td><code>test</code></td><td>Reverse proxy; where it is safe to be wrong first.</td></tr>
+</tbody></table></div>
+<p>Point the tool at a copy of it with a pointer file at the root of the tool checkout:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>cp -R contrib/example-estate ~/vpscfg-estate
+printf '%s\n' "$(cd ~/vpscfg-estate &amp;&amp; pwd -P)" &gt; estate.path
+chmod 600 estate.path
+./vpscfg-control.py status     # the example's three hosts and their postures</code></pre></div>
+<p>Merge the stanzas from <code>ssh_config.example</code> into <code>~/.ssh/config</code>: every governed host must be an SSH alias, and a policy group naming a host you cannot reach refuses to load. Then use the introspection verbs, which change nothing:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>./vpsexec hosts       # postures, as the governor sees them
+./vpsexec groups      # @web, @db, @edge, @docker, @shop, @test
+./vpsexec checks      # the named read plays
+./vpsexec edge1 'touch /tmp/hello'   # a mutation without --run: prints the plan and stops</code></pre></div>
+<div class="notice"><p>Reads such as <code>./vpsexec @all 'uptime'</code> connect to the hosts over SSH. The example addresses are documentation ranges and will not answer. Replace the example hosts, addresses and keys with your own, start every host at <code>frozen</code> or <code>test</code>, and change postures only in reviewed commits.</p></div>
+<p>On your own estate, a first read session looks like this:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>./vpsexec @all 'uptime'
+./vpsexec @docker 'docker ps' --compare
+./vpsexec check failed
+./vpscfg-control.py web1 containers
+./vpscfg-control.py edge1 details</code></pre></div>
+<p>Delete <code>estate.path</code> to return to the default estate, the tool checkout itself. There is deliberately no flag or environment variable for choosing the estate.</p>
+
+<h2 id="concepts">Key concepts</h2>
+<h3 id="governor">The governor</h3>
+<p><code>vpscfg-control.json</code> at the estate root is the one file that grants anything. Nothing in <code>policies/</code> can loosen it.</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Posture</th><th scope="col">Reads</th><th scope="col">Mutations through vpsexec</th></tr></thead>
+<tbody>
+<tr><td><code>released</code></td><td>Yes</td><td>Yes, with <code>--run</code>, <code>--reason</code> and approval.</td></tr>
+<tr><td><code>test</code></td><td>Yes</td><td>The same. Use it where a mistake is cheap.</td></tr>
+<tr><td><code>lockdown</code></td><td>Yes</td><td>Only with <code>--break-glass</code> and a committed runbook naming the exact command.</td></tr>
+<tr><td><code>frozen</code></td><td>Yes</td><td>The same as <code>lockdown</code>.</td></tr>
+</tbody></table></div>
+<p>A host missing from <code>hosts</code> is treated as frozen. <code>mode: lockdown</code> or <code>mutation_enabled: false</code> refuses every mutation, break-glass included. <code>allowed_verbs</code> must contain <code>exec</code> for vpsexec to work at all. <code>alias_of</code> declares that two names are one machine. <code>scopes</code> holds the scopes released for contracted deploys.</p>
+<h3 id="floor">The deny-always floor</h3>
+<p>Volume, system, image and network prunes, <code>volume rm</code>, <code>compose down -v</code>, <code>DROP TABLE|DATABASE|SCHEMA</code>, <code>TRUNCATE</code>, <code>rm -rf /...</code>, <code>kubectl delete ns</code>, <code>mkfs</code>, <code>dd if=</code> and <code>terraform destroy</code> are compiled into all three doors. The governor's <code>deny_always</code> list may add patterns; a governor that omits a floor entry is treated as tampered and refuses everything. No policy file, runbook, <code>--break-glass</code> or approval reaches the floor.</p>
+<h3 id="policies">Policies and runbooks</h3>
+<p>Policy files in <code>policies/*.yaml</code> (not recursive, so <code>policies/examples/</code> is inert) can only make the doors stricter:</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">A policy file can</th><th scope="col">A policy file cannot</th></tr></thead>
+<tbody>
+<tr><td>Name host groups</td><td>Change any host's posture</td></tr>
+<tr><td>Add deny patterns (<code>deny_extra</code>)</td><td>Remove a deny pattern</td></tr>
+<tr><td>Add risky patterns (<code>risky_extra</code>)</td><td>Widen the read-only allowlist</td></tr>
+<tr><td>Authorise an exact command on exact hosts</td><td>Lift the deny-always floor</td></tr>
+</tbody></table></div>
+<p>A runbook is a policy file with <code>runbooks:</code>. Each entry authorises one exact command on exact hosts. A file with runbooks needs <code>expires: "YYYY-MM-DD"</code> (after that day its runbooks are disarmed and every run warns) and a <code>shape</code> declaring its step count, hosts and break-glass mix. Entries can carry <code>break_glass: true</code>, a <code>verify</code> read that must exit non-zero on failure, <code>timeout</code>, <code>container</code> and <code>rollback: true</code>:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>version: 1
+expires: "2026-12-31"
+shape: {steps: 1, hosts: [web1, edge1], break_glass: true}
+reason: "Outage runbooks"
+runbooks:
+  - hosts: [web1, edge1]
+    cmd: "systemctl restart nginx"
+    where: host
+    break_glass: true
+    why: "wedged nginx worker pool"</code></pre></div>
+<p>Unknown keys and duplicate keys refuse the whole load. Retire a finished runbook with <code>git mv policies/&lt;file&gt;.yaml policies/examples/superseded/</code> in a reviewed commit.</p>
+<h3 id="contracts">Contracts</h3>
+<p>The contracted-deploy door works from one YAML contract per service in <code>contracts/</code>. A contract records what to sync, what must never be overwritten, what healthy means and what else is in the blast radius:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>service: shop-api
+host: web1                      # must resolve in ~/.ssh/config
+deploy_dir: /srv/shop-api
+sync:
+  include: ["server.js", "routes/", "middleware/", "migrations/"]
+  never:   [".env.production", "Dockerfile", "package.json", "package-lock.json"]
+build:   "docker compose up -d --build --force-recreate"
+freeze:  false
+pre:
+  - backup: "tar czf /root/{service}-pre-{ts}.tar.gz {deploy_dir}"
+verify:
+  - http: { url: "https://api.example.com/health", expect: 200, timeout: 10 }
+  - container: { name: "shop-api", state: "healthy", within: "90s" }
+blast_radius:
+  shares_host_with: "every other service on web1"
+  volumes: []</code></pre></div>
+<p><code>sync.never</code> is required. <code>freeze: true</code> is a hard lock; unfreezing is a git commit. Every operation runs the same pipeline: contract, plan, gate, apply, verify. Reads stop after the plan, and mutations need <code>--run</code>.</p>
+<h3 id="journal">The journal</h3>
+<p>Every invocation, allowed or refused, lands in a locked, fsynced, hash-chained JSONL journal in the tool checkout's <code>journal/</code> directory (<code>control.jsonl</code>, <code>executor.jsonl</code>, <code>vpsexec.jsonl</code>). If the journal cannot be written, nothing changes. Secret values are masked in remote output before it is shown, compared or journaled; if the masker fails, the output is withheld.</p>
+<h3 id="ratchet">The release ratchet</h3>
+<p>The contracted-deploy path ships maximally locked: stage 0 allows reads, status and plans only, and the executor refuses even when every gate is green. Controls come off one scope per commit, smallest first (container, then pod, then service, then host), each tested and recorded in the governor's <code>scopes.tested</code> before it enters <code>scopes.unlocked</code>. <code>docs/STABILITY.md</code> lists the stages and what stays locked forever.</p>
+
+<h2 id="deploy-door">The contracted-deploy door</h2>
+<p><code>vpscfg-control.py</code> validates the governor, judges the invocation, journals it and hands it to the <code>vpscfg</code> package, which re-validates independently. The upstream docs write its grammar as <code>vpscfg ...</code>; you run it as <code>./vpscfg-control.py ...</code>.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>./vpscfg-control.py status                     # governor state: mode, postures, scopes
+./vpscfg-control.py web1 containers            # live docker ps (read-only)
+./vpscfg-control.py db1 overlays               # k3s namespaces
+./vpscfg-control.py edge1 details              # host identity, OS, uptime
+./vpscfg-control.py web1 drift shop-api        # git, contract and live state, three-way
+./vpscfg-control.py web1 verify shop-api       # run the contract's post-conditions
+./vpscfg-control.py lint                       # contract quality floor
+./vpscfg-control.py fleet watch                # every contract's verify block
+./vpscfg-control.py fleet changes              # live state vs baseline; flags unjournaled changes
+./vpscfg-control.py index --all                # cached record of what lives on each host
+./vpscfg-control.py journal verify             # check the journal's hash chain</code></pre></div>
+<h3 id="preflight">Deploying: preflight, then run</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>./vpscfg-control.py edge1 deploy shop-proxy --preflight          # GO=0 / warnings=1 / NO-GO=2
+./vpscfg-control.py edge1 deploy shop-proxy --preflight --json
+./vpscfg-control.py edge1 deploy shop-proxy --run --reason "why" # only within 30 min of a GO</code></pre></div>
+<p>Preflight is read-only. <code>--run</code> refuses unless the latest preflight for the same plan (contract, sync arguments and source bytes) was GO or GO-WITH-WARNINGS in the last 30 minutes. Mutations also need <code>--reason</code>, journaled forever, and the scope must have graduated in the governor. Refusals exit <code>2</code> with the reason on standard error.</p>
+
+<h2 id="vpsexec">vpsexec: gated ad-hoc commands</h2>
+<p>For what a contract cannot express, such as restarting a wedged process on several machines during an outage or reading five machines' logs at once.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>vpsexec &lt;hosts&gt; '&lt;command&gt;' [flags]                  # the command is ONE argument
+vpsexec &lt;hosts&gt; push &lt;file&gt; --sha256 &lt;hex&gt; [flags]   # content-addressed file push</code></pre></div>
+<p>Hosts are <code>edge1</code>, a list such as <code>web1,edge1</code> (run in the order named), a group such as <code>@web</code>, <code>@all</code>, or a mix. One machine reached by two names runs once.</p>
+<h3 id="tiers">The three tiers</h3>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Tier</th><th scope="col">Examples</th><th scope="col">What it takes</th></tr></thead>
+<tbody>
+<tr><td>read</td><td><code>df -h</code>, <code>docker ps</code>, <code>systemctl status x</code>, <code>journalctl</code></td><td>Nothing. Any host, no <code>--run</code>. Reads fan out in parallel.</td></tr>
+<tr><td>mutating</td><td><code>./deploy.sh</code>, <code>make install</code>, anything unrecognised</td><td><code>--run</code>, <code>--reason</code>, a posture that allows it, and approval. Mutations run serially and continue past a failure.</td></tr>
+<tr><td>risky</td><td><code>systemctl restart</code>, <code>docker rm</code>, <code>reboot</code>, <code>iptables</code></td><td>All of the above, plus a runbook or override naming the exact command for every host.</td></tr>
+<tr><td>floor</td><td>Prunes, <code>volume rm</code>, <code>DROP</code>, <code>rm -rf /...</code>, <code>mkfs</code></td><td>Never.</td></tr>
+</tbody></table></div>
+<p>The read tier is an allowlist with per-command option grammars; anything not on it is a mutation, and command substitution is refused outright. For example, <code>curl</code> is a read only when <code>-q</code> comes first, so a health check is written <code>curl -qfsS URL</code>.</p>
+<h3 id="vpsexec-flags">Common flags</h3>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Flag</th><th scope="col">Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>--run</code></td><td>Actually execute. Without it you get the plan and stop.</td></tr>
+<tr><td><code>--reason "why"</code></td><td>Required for anything that is not a read; journaled.</td></tr>
+<tr><td><code>--in NAME</code>, <code>--in-match GLOB</code>, <code>--in-all</code></td><td>Run inside live containers.</td></tr>
+<tr><td><code>--verify 'CMD'</code></td><td>A read post-condition per host; its failure fails that host.</td></tr>
+<tr><td><code>--canary [N]</code></td><td>The first N hosts must pass before the rest are touched.</td></tr>
+<tr><td><code>--compare</code></td><td>Reads only: group hosts by identical output and flag the odd one out.</td></tr>
+<tr><td><code>--break-glass</code></td><td>Reach frozen or lockdown hosts, backed by a committed runbook.</td></tr>
+<tr><td><code>--approve=HASH</code></td><td>Non-interactive approval of one exact plan hash (not enough on its own for break-glass).</td></tr>
+<tr><td><code>--grant FILE</code>, <code>--grant auto</code></td><td>Use an approval contract instead of typing the break-glass phrase.</td></tr>
+<tr><td><code>--timeout N</code></td><td>Per-host timeout in seconds.</td></tr>
+</tbody></table></div>
+<h3 id="checks">Checks and read-back</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>vpsexec check                  # list the named read plays
+vpsexec check failed           # what is broken, everywhere
+vpsexec check disk @docker     # override the default host set
+vpsexec last web1 -n 3         # the last runs in full: command, reason, approval, output, verify
+vpsexec log --since 2h         # the journal, filtered
+vpsexec runbook lint policies/web-release-example.yaml</code></pre></div>
+<p>Checks are reads with a name, so they need no <code>--run</code> or approval. <code>runbook lint</code> checks a runbook at authoring time (shape, expiry, timeouts, pushed artifacts, STOP steps) and ends in GO, GO-WITH-WARNINGS or NO-GO.</p>
+
+<h2 id="approvals">Approvals, break-glass and grants</h2>
+<p>Nothing mutating runs without explicit, per-plan approval, typed at a real terminal. The phrase scales with what is at stake:</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Situation</th><th scope="col">Type</th></tr></thead>
+<tbody>
+<tr><td>One host</td><td>The host name</td></tr>
+<tr><td>Several hosts</td><td><code>FLEET:&lt;n&gt;</code></td></tr>
+<tr><td><code>--in-all</code></td><td><code>ALL:&lt;hosts&gt;</code></td></tr>
+<tr><td>Break-glass</td><td><code>BREAK-GLASS:&lt;n&gt;</code></td></tr>
+</tbody></table></div>
+<p>There is no <code>--yes</code>. Without a TTY, a plan can be approved only with <code>--approve=&lt;plan-hash&gt;</code> from an earlier dry run, which authorises one byte-identical plan and never a break-glass plan on its own.</p>
+<p><strong>Break-glass</strong> elevates posture per host, only for hosts that need it, and only with <code>--break-glass</code> plus a committed runbook with <code>break_glass: true</code> naming the exact command for each elevated host. The floor, the master switch and <code>mode: lockdown</code> still refuse. An ad-hoc <code>--override</code> file can never grant break-glass.</p>
+<p><strong>Approval contracts</strong> ("grants") replace the typed phrase for one reviewed runbook's break-glass steps, for a bounded time, and nothing else. Every other gate runs unchanged on every use.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>vpsexec grant new web-release-example --ttl 30m          # preview; writes nothing
+vpsexec grant new web-release-example --ttl 30m --run    # mint: TTY only, type GRANT:web-release-example:30m
+vpsexec grant list
+vpsexec grant revoke &lt;session_id&gt;</code></pre></div>
+<p>Short grants bind one runbook file by the hash of its bytes, so editing the runbook invalidates them. Reusable grants (<code>--kind reusable</code>) bind pushed policy and a maximum number of uses. Both need a TTY when minted and at every use.</p>
+
+<h2 id="plays">Plays and the runbook walker</h2>
+<p>When a fix is several approved mutations, an agent can write <code>plays/&lt;name&gt;.yaml</code>, and a human runs <code>vpsrun plays/&lt;name&gt;.yaml</code> in a real terminal, reads every step's plan and types one phrase. Each step still goes through the door twice, once for its plan hash and once to run it, so a plan that changed after it was shown halts the play. The agent reads the result with <code>vpsexec last</code>.</p>
+<p>The example estate's runbook walker runs a runbook's steps in order through vpsexec:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>contrib/runbook-walker/walk.sh --runbook web-release-example --list
+contrib/runbook-walker/deploy.sh web-release-example --ttl 30m \
+    --reason "shop 1.4.0 release" --artifacts contrib/example-estate/artifacts</code></pre></div>
+<p><code>deploy.sh</code> mints one grant, then runs <code>walk.sh</code>, which checks pushed artifacts by sha256 before the first step, records progress so you can resume with <code>--from N</code>, skips rollback steps and pauses after "Stop if" steps.</p>
+
+<h2 id="files">Files and locations</h2>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Path</th><th scope="col">What it is</th></tr></thead>
+<tbody>
+<tr><td><code>estate.path</code></td><td>Optional pointer at the tool checkout root: one line, an absolute real path to your estate. Must be yours, mode 0600 or 0644, and never committed.</td></tr>
+<tr><td><code>vpscfg-control.json</code></td><td>The governor, at the estate root. Not shipped.</td></tr>
+<tr><td><code>policies/*.yaml</code></td><td>Groups, checks, deny additions, credential paths and runbooks (estate).</td></tr>
+<tr><td><code>contracts/*.yaml</code></td><td>One contract per service (estate).</td></tr>
+<tr><td><code>plays/</code></td><td>Queued plays for <code>vpsrun</code> (estate).</td></tr>
+<tr><td><code>journal/</code></td><td>The hash-chained journals and the repair database, in the tool checkout (gitignored).</td></tr>
+<tr><td><code>~/.ssh/config</code></td><td>The host registry. <code>Include</code> is followed as OpenSSH follows it.</td></tr>
+<tr><td><code>~/.vpscfg/grants/</code></td><td>Minted approval contracts (0600 files in a 0700 directory).</td></tr>
+</tbody></table></div>
+
+<h2 id="integrations">Optional integrations</h2>
+<p>Each is off until named in the governor's <code>integrations</code> block. No environment variable or flag turns them on.</p>
+<ul>
+<li><strong>Telemetry:</strong> an <code>https://</code> endpoint that receives a copy of each journal record. The local journal stays authoritative; push failures never block a mutation. The key comes from <code>$VPSCFG_TELEMETRY_KEY</code> or <code>~/.config/vpscfgfarm/telemetry-key</code>.</li>
+<li><strong>Traefik file provider:</strong> read a host's dynamic config to suggest <code>http:</code> verify checks.</li>
+<li><strong>Firewall manager:</strong> the desired state that <code>fleet firewall</code> judges live firewall state against.</li>
+<li><strong>Maintenance windows:</strong> a JSON export of active windows; <code>--require-blackout</code> refuses hosts outside one.</li>
+<li><strong>badfarm IaC scan:</strong> a separately installed <code>badfarm</code> on <code>PATH</code> (or <code>$VPSCFG_BADFARM</code>). <code>fleet iac PATH</code> scans a local tree, and deploy preflight's <code>iac</code> check scans the contract's repository.</li>
+<li><strong>Secret source:</strong> the command <code>secret-put --from-pipe</code> runs, without a shell, to read one secret.</li>
+</ul>
+
+<h2 id="fit">How it fits with the other tools</h2>
+<ul>
+<li><strong><a href="/docs/badfarm.html">badfarm</a> discovers</strong> problems read-only and can scan a contract's infrastructure code for vpscfgfarm's preflight.</li>
+<li><strong><a href="/docs/goodfarm.html">goodfarm</a> plans repairs</strong> and drives them through vpscfgfarm's repair protocol: <code>./vpscfg-control.py HOST deploy SERVICE --repair-action describe|approve|apply|status</code>. Only <code>service-deploy/v1</code> executes, through the normal deploy gates; the distro-upgrade and reboot recipes can be approved but their apply records a refusal.</li>
+<li><strong>vpscfgfarm executes</strong> through its gates, and holds all the authority.</li>
+<li><strong><a href="/docs/farmops.html">farmops</a></strong> is planned to schedule routine work under standing grants that vpscfgfarm checks on every call. Today farmops has only its catalog format, loader and journal.</li>
+</ul>
+
+<h2 id="links">Links</h2>
+<ul>
+<li><a href="https://github.com/afterdarksys/vpscfgfarm#readme">Full README on GitHub</a></li>
+<li><a href="https://github.com/afterdarksys/vpscfgfarm/blob/main/contrib/README.md">The example estate walkthrough</a></li>
+<li><a href="https://github.com/afterdarksys/vpscfgfarm/blob/main/docs/VPSEXEC.md">vpsexec reference</a>, <a href="https://github.com/afterdarksys/vpscfgfarm/blob/main/docs/HOWTO.md">deploy door how-to</a>, <a href="https://github.com/afterdarksys/vpscfgfarm/blob/main/docs/DESIGN.md">design</a>, <a href="https://github.com/afterdarksys/vpscfgfarm/blob/main/docs/STABILITY.md">release ratchet</a>, <a href="https://github.com/afterdarksys/vpscfgfarm/blob/main/policies/README.md">policy files</a>, <a href="https://github.com/afterdarksys/vpscfgfarm/blob/main/docs/PREFLIGHT.md">preflight</a>, <a href="https://github.com/afterdarksys/vpscfgfarm/blob/main/docs/RECOVERY.md">recovery</a></li>
+<li><a href="https://github.com/afterdarksys/vpscfgfarm/tags">Tagged versions</a> (v0.1.0; no packaged release downloads)</li>
+<li><a href="https://github.com/afterdarksys/vpscfgfarm/blob/main/LICENSE">Apache 2.0 license</a></li>
+<li><a href="https://github.com/afterdarksys/vpscfgfarm/issues">Issue tracker</a></li>
+<li><a href="https://github.com/afterdarksys/vpscfgfarm/blob/main/SECURITY.md">Security policy</a>: report a way past a door privately.</li>
+</ul>
+<p class="source-note">Built from the public <a href="https://github.com/afterdarksys/vpscfgfarm">vpscfgfarm repository</a> (README.md, contrib/README.md, the example estate, docs/HOWTO.md, docs/VPSEXEC.md, docs/DESIGN.md, docs/STABILITY.md, docs/REPAIR-PROTOCOL.md and the vpscfg CLI help text) at commit e899b93.</p>
+
+</article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

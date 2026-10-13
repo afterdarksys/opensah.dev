@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>farmops guide | OpenSAH / dev</title><meta name="description" content="farmops is in early development: what exists today (catalog schema, loader, journal, tests), how to try it, and what is still planned."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/farmops.html"><meta property="og:type" content="website"><meta property="og:title" content="farmops guide | OpenSAH / dev"><meta property="og:description" content="farmops is in early development: what exists today (catalog schema, loader, journal, tests), how to try it, and what is still planned."><meta property="og:url" content="https://opensah.dev/docs/farmops.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Farm tool guides</p><h1>farmops: routine operations.</h1><p>A catalog of routine tasks for a fleet, built on vpscfgfarm and badfarm. Today it is a tested foundation: the catalog format, its loader and farmops's own journal.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html" aria-current="page">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a></aside><article class="docs-content">
+
+<span class="pill">Early development</span> <span class="pill">0.0.1, untagged</span> <span class="pill">MIT</span>
+<nav aria-label="On this page"><ul>
+<li><a href="#what">What it is</a></li>
+<li><a href="#status">What exists today</a></li>
+<li><a href="#requirements">Requirements</a></li>
+<li><a href="#try">Try it</a></li>
+<li><a href="#catalog">The catalog format</a></li>
+<li><a href="#journal">The farmops journal</a></li>
+<li><a href="#planned">Planned</a></li>
+<li><a href="#fit">How it fits with the other tools</a></li>
+<li><a href="#links">Links</a></li>
+</ul></nav>
+
+<h2 id="what">What it is</h2>
+<p>farmops is meant to run routine operations, such as security patching on a group of hosts in a weekly window, on top of <a href="/docs/vpscfgfarm.html">vpscfgfarm</a> (the door) and <a href="/docs/badfarm.html">badfarm</a> (discovery). A catalog entry describes one routine task: which hosts, when, how fast, and what to check before and after.</p>
+<div class="notice"><p><strong>What it is not.</strong> farmops has no authority of its own. vpscfgfarm decides and enforces every bound, badfarm observes, and farmops proposes and schedules. A catalog entry grants nothing. Today farmops cannot run anything at all: there is no scheduler, runner or command-line tool yet.</p></div>
+
+<h2 id="status">What exists today</h2>
+<p>The repository is a skeleton. It holds:</p>
+<ul>
+<li><strong>The catalog schema</strong> (<code>farmops/schema.py</code>): version 1 of the entry format, closed to unknown keys, with <code>validate()</code> returning a normalised copy.</li>
+<li><strong>The catalog loader</strong> (<code>farmops/catalog.py</code>): <code>load_entry(path)</code> and <code>load_catalog(directory)</code>, with a strict YAML reader.</li>
+<li><strong>Dependency pointers</strong> (<code>farmops/deps.py</code>): how a farmops checkout names the vpscfgfarm and badfarm checkouts it uses, and records which commit each is at.</li>
+<li><strong>farmops's own journal</strong> (<code>farmops/journal.py</code>): append-only, hash-chained JSONL, journal-or-refuse.</li>
+<li><strong>Tests and fakes</strong> (<code>tests/</code>): hermetic tests with fake door, badfarm and signer modules. They use temporary directories and never contact a host.</li>
+</ul>
+
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li>Python 3.9 or later.</li>
+<li>PyYAML, pinned with sha256 hashes in <code>requirements.lock</code>.</li>
+<li>pytest to run the tests (the <code>test</code> extra in <code>pyproject.toml</code>).</li>
+</ul>
+
+<h2 id="try">Try it</h2>
+<p>Clone the repository, install the pinned dependency and run the tests:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>git clone https://github.com/afterdarksys/farmops.git
+cd farmops
+python3 -m pip install --no-deps --require-hashes -r requirements.lock
+python3 -m pytest -q</code></pre></div>
+<p>Then load a catalog. Save the example entry from <a href="#catalog">the catalog format</a> below as <code>debian-security-web.yaml</code> in a private directory (the loader refuses a directory that group or others can write), and read it from the checkout:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>mkdir -m 700 ~/farmops-catalog
+# save the example entry as ~/farmops-catalog/debian-security-web.yaml, then:
+python3 -c '
+import os, sys
+from farmops import catalog
+entries = catalog.load_catalog(os.path.expanduser(sys.argv[1]))
+for name, entry in entries.items():
+    print(name, entry["template"], entry["schedule"]["window_s"])
+' ~/farmops-catalog</code></pre></div>
+<p>For the example this prints <code>debian-security-web debian/apt-security-upgrade@1 7200</code>: the entry name, its template, and the two-hour window in seconds. Change <code>max_hosts</code> to <code>0</code> and the load fails with <code>hosts.max_hosts: 0 is outside 1-64</code>. One invalid entry refuses the whole catalog.</p>
+
+<h2 id="catalog">The catalog format</h2>
+<p>A catalog is one directory, read non-recursively, with one entry per file named <code>&lt;entry&gt;.yaml</code>, where the name matches <code>[a-z][a-z0-9-]{0,62}</code> and equals the file's <code>entry:</code> key. Hidden files are skipped; any other file name refuses the whole catalog. A catalog holds at most 256 entries, each file at most 64 KiB.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>version: 1                    # required; exactly 1
+entry: debian-security-web    # required; equals the file name
+template: debian/apt-security-upgrade@1   # required; &lt;family&gt;/&lt;name&gt;@&lt;version&gt;
+description: "Debian security patching on web hosts"
+hosts:
+  select: 'host.os.id == "debian" and host.os.version_id == "12"'
+  require_groups: [web]
+  include: []
+  exclude: [web3]
+  max_hosts: 3
+schedule:
+  tz: America/New_York
+  days: [sun]
+  start: "03:00"
+  end: "05:00"
+after: []
+rollout:
+  hosts_per_window: 1
+  canary: 0
+runtime:
+  max_runtime_s: 2700
+  verify_grace_s: 900
+  postcheck_grace_s: 1800
+params:
+  reboot: if_required
+prechecks:
+  - index_fresh: 12h
+  - badfarm_clear: [health.failed-units, health.disk-fault]
+  - badfarm_present: [software.pending-security-updates]
+postchecks:
+  - badfarm_rescan: {resolves: [software.pending-security-updates], no_new: [health.failed-units]}
+rollback: none
+notify: [halt, finish, missed, skipped, blocked]
+ttl: 7d</code></pre></div>
+<h3 id="catalog-fields">Fields</h3>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Field</th><th scope="col">Rule</th></tr></thead>
+<tbody>
+<tr><td><code>hosts</code></td><td><code>select</code> (an index query) and <code>max_hosts</code> (1-64) are required. <code>require_groups</code>, <code>include</code> and <code>exclude</code> are optional; a host cannot be in both lists.</td></tr>
+<tr><td><code>schedule</code></td><td>An IANA time zone, 1-7 distinct days, and quoted <code>HH:MM</code> start and end on the same day, at most 8 hours apart.</td></tr>
+<tr><td><code>after</code></td><td>Entry names whose window must have ended first. Each must exist in the catalog, and cycles are refused.</td></tr>
+<tr><td><code>rollout</code></td><td><code>hosts_per_window</code> 1-16 and at most <code>max_hosts</code>; an optional <code>canary</code> below it.</td></tr>
+<tr><td><code>runtime</code></td><td><code>max_runtime_s</code> 60-28800 and no longer than the window; verify and postcheck grace periods.</td></tr>
+<tr><td><code>prechecks</code></td><td>Reads. A failure skips the host: <code>index_fresh</code>, <code>badfarm_clear</code>, <code>badfarm_present</code>.</td></tr>
+<tr><td><code>postchecks</code></td><td><code>badfarm_rescan</code> with <code>resolves</code> and <code>no_new</code> check IDs.</td></tr>
+<tr><td><code>rollback</code></td><td>Only <code>none</code> in version 1.</td></tr>
+<tr><td><code>notify</code></td><td>Must include <code>halt</code> and <code>blocked</code>.</td></tr>
+<tr><td><code>ttl</code></td><td><code>7d</code>, <code>14d</code> or <code>30d</code>.</td></tr>
+</tbody></table></div>
+<h3 id="catalog-strict">Strict YAML</h3>
+<p>Entry files must be printable ASCII plus newlines, hold exactly one YAML document, and nest at most 16 levels. On top of PyYAML's safe loader the reader refuses duplicate keys at any depth, anchors, aliases and merge keys, YAML 1.1 boolean words such as <code>yes</code> and <code>on</code>, floats, timestamps and nulls, explicit tags, and any whole number that is not plain decimal (so <code>0644</code> cannot silently become 420). Times must be quoted, because an unquoted <code>3:00</code> reads as a number. Values are never coerced.</p>
+
+<h2 id="journal">The farmops journal</h2>
+<p>farmops records what it did and saw in its own journal, separate from vpscfgfarm's authoritative journal. Each record is one line of canonical JSON chained to the previous line by sha256. The whole file is verified before every append; an edited, reordered, truncated or spliced journal refuses the append, and journal-or-refuse means the step that wanted the record does not run. The journal lives under <code>~/.farmops/journal</code> in the home directory from the password database (never <code>$HOME</code>), with every path component checked for symlinks, ownership and permissions. A secret masker is required, and field names that look like secrets are refused.</p>
+<p>The library entry points are <code>Journal(stream, mask=...)</code>, with <code>append()</code>, <code>verify()</code>, <code>records()</code>, <code>tail(n)</code> and <code>run_journaled(event, step)</code>. In production the masker is meant to be vpscfgfarm's secret masker; only tests pass the explicit <code>NO_MASK</code>.</p>
+
+<h2 id="planned">Planned</h2>
+<p>The public README lists the rest as later work. None of it exists yet:</p>
+<ul>
+<li>A compiler that turns a catalog entry into a routine policy that vpscfgfarm enforces.</li>
+<li>Templates (the <code>template:</code> key names one, but no templates ship).</li>
+<li>A scheduler that runs due entries with no human present, under a standing grant that a human approved once at a terminal, with a signature. The door is to check that grant on every call.</li>
+<li>A runner, reports and a command-line interface.</li>
+</ul>
+
+<h2 id="fit">How it fits with the other tools</h2>
+<p>The design puts farmops last in the chain: <a href="/docs/badfarm.html">badfarm</a> observes, <a href="/docs/vpscfgfarm.html">vpscfgfarm</a> enforces, and farmops would schedule routine work between them. Today only the data side of that link exists. Catalog prechecks and postchecks name badfarm check IDs, such as <code>health.failed-units</code> and <code>software.pending-security-updates</code>, and <code>deps.py</code> records the vpscfgfarm and badfarm commits in use. Nothing in farmops calls either tool yet.</p>
+
+<h2 id="links">Links</h2>
+<ul>
+<li><a href="https://github.com/afterdarksys/farmops#readme">README on GitHub</a></li>
+<li><a href="https://github.com/afterdarksys/farmops/blob/main/docs/CATALOG.md">The catalog format (docs/CATALOG.md)</a></li>
+<li>Releases: none yet; the package version is 0.0.1.</li>
+<li><a href="https://github.com/afterdarksys/farmops/blob/main/LICENSE">MIT license</a></li>
+<li><a href="https://github.com/afterdarksys/farmops/issues">Issue tracker</a></li>
+<li><a href="https://github.com/afterdarksys/farmops/blob/main/SECURITY.md">Security policy</a></li>
+</ul>
+<p class="source-note">Built from the public <a href="https://github.com/afterdarksys/farmops">farmops repository</a> (README.md, docs/CATALOG.md and the module docstrings in farmops/) at commit 6de9abd.</p>
+
+</article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

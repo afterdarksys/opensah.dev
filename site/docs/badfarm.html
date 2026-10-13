@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>badfarm guide | OpenSAH / dev</title><meta name="description" content="Install and use badfarm: read-only assessment of hosts, containers, Kubernetes and IaC, with stored evidence, findings and a remediation handoff."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/badfarm.html"><meta property="og:type" content="website"><meta property="og:title" content="badfarm guide | OpenSAH / dev"><meta property="og:description" content="Install and use badfarm: read-only assessment of hosts, containers, Kubernetes and IaC, with stored evidence, findings and a remediation handoff."><meta property="og:url" content="https://opensah.dev/docs/badfarm.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Farm tool guides</p><h1>badfarm: read-only discovery.</h1><p>Inventory and assess hosts, containers, Kubernetes and infrastructure code. Store the evidence, track findings over time, and hand reviewed work to the repair path.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html" aria-current="page">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a></aside><article class="docs-content">
+
+<span class="pill available">Available</span> <span class="pill">Tag v0.4.0</span> <span class="pill">Apache 2.0</span>
+<nav aria-label="On this page"><ul>
+<li><a href="#what">What it is</a></li>
+<li><a href="#requirements">Requirements</a></li>
+<li><a href="#install">Install</a></li>
+<li><a href="#quick-start">Quick start</a></li>
+<li><a href="#concepts">Key concepts</a></li>
+<li><a href="#usage">Usage</a></li>
+<li><a href="#config">Data, policy and the store</a></li>
+<li><a href="#exit">Exit codes</a></li>
+<li><a href="#fit">How it fits with the other tools</a></li>
+<li><a href="#links">Links</a></li>
+</ul></nav>
+
+<h2 id="what">What it is</h2>
+<p>badfarm inventories infrastructure and finds misconfiguration, unhealthy workloads, unsupported software, known vulnerabilities and the usual causes of an outage. Every assessment is saved to a local store, so each finding has a first-seen, last-seen and resolved time, and you can verify a fix against a checkpoint. Use it to answer "what is wrong across these hosts", to triage an outage, to troubleshoot one container or pod, or to scan infrastructure code before it is applied.</p>
+<p>The same distribution ships <a href="/docs/goodfarm.html">goodfarm</a>, which plans reviewed repairs from badfarm findings.</p>
+<div class="notice"><p><strong>What it is not.</strong> badfarm never modifies its targets and never applies remediation. Every command it runs against a target must match a per-executable read-only grammar, enforced at runtime; anything else is refused before it starts and recorded as a coverage gap. Some allowed reads still leave side effects such as log lines or access times. Missing evidence is never reported as a clean result: a check that could not run is a coverage finding, not a pass.</p></div>
+
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li>Python 3.9 or later. The core has no third-party dependencies.</li>
+<li>Optional: PyYAML for YAML output and YAML infrastructure-code scanning (the <code>yaml</code> and <code>iac</code> extras).</li>
+<li>For targets: <code>ssh</code> for <code>ssh://</code> hosts, <code>docker</code> for container targets, and <code>kubectl</code> with a context for Kubernetes and k3s targets.</li>
+<li>CI runs the suite on Linux and macOS.</li>
+</ul>
+
+<h2 id="install">Install</h2>
+<p>Install from a clone of the public repository. One install provides both the <code>badfarm</code> and <code>goodfarm</code> commands.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>git clone https://github.com/afterdarksys/badfarm.git
+cd badfarm
+python3 -m pip install '.[yaml,iac]'</code></pre></div>
+<p>For development, use an editable install: <code>python3 -m pip install -e '.[yaml,iac]'</code>. Without installing, run <code>python3 -m badfarm</code> and <code>python3 -m badfarm.goodfarm</code> from the checkout.</p>
+<p>Verify the install:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>badfarm --version
+badfarm doctor
+goodfarm --help</code></pre></div>
+<p><code>badfarm doctor</code> checks local prerequisites and the store location, never contacts a target, and exits 0 when ready.</p>
+
+<h2 id="quick-start">Quick start</h2>
+<p>Start with the machine you are on, offline, so nothing leaves it:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>badfarm --offline inventory local
+badfarm scan local --checkpoint baseline
+badfarm findings --severity critical,high
+badfarm show bf-1a2b3c4d                    # any unique finding-ID prefix</code></pre></div>
+<p>Fix something, then confirm it against the checkpoint:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>badfarm verify local --checkpoint baseline  # 0 only when baseline failures are resolved
+badfarm drift local --checkpoint baseline   # 0 only when nothing changed</code></pre></div>
+<p>Then point it at a host you are authorised to assess:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>badfarm scan ssh://web1.example.com
+badfarm troubleshoot docker://local         # unhealthy containers, causes, read-only next steps</code></pre></div>
+
+<h2 id="concepts">Key concepts</h2>
+<h3 id="targets">Targets</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>local
+ssh://host
+docker://local[/container]
+docker+ssh://host[/container]
+k8s://context[/namespace[/pod]]
+k3s://context[/namespace[/pod]]</code></pre></div>
+<h3 id="evidence">Evidence and findings</h3>
+<p>Each assessment records the evidence behind every finding (for example the kernel lines or package names that matched) and a receipt for each check that ran. A finding is marked resolved only when a complete assessment of the same target ran that check and did not observe it. An inventory, a run whose advisory source was unavailable, or a skipped check never resolves anything. <code>show</code> prints the evidence for one finding; <code>explain</code> says what evidence is missing and the next collection step.</p>
+<h3 id="checkpoints">Checkpoints</h3>
+<p><code>--checkpoint NAME</code> labels an assessment. <code>verify</code> and <code>drift</code> re-scan and compare against it; <code>checkpoints list</code> shows what is stored.</p>
+<h3 id="coverage">Coverage</h3>
+<p>Unreachable hosts, denied reads, missing tools, stale datasets and skipped checks all become coverage findings. Exit codes treat them as needing attention, so an incomplete run cannot look clean.</p>
+<h3 id="handoff">Handoff and proposals</h3>
+<p><code>handoff FINDING --output handoff.json</code> emits a simple vpscfgfarm handoff artifact. <code>propose</code> produces a versioned, expiring, review-only remediation proposal bound to the evidence, and <code>validate-proposal</code> checks its integrity against the store. Neither is an approval or permission to execute. Governed repair goes through <a href="/docs/goodfarm.html">goodfarm</a>.</p>
+
+<h2 id="usage">Usage</h2>
+<p>Global options (<code>--db</code>, <code>--timeout</code>, <code>--budget</code>, <code>--offline</code>, <code>--log-level</code>, <code>--debug</code>, <code>-v</code> and the data paths) go before or after the command. Every command accepts <code>--format text</code> and <code>--format table</code>.</p>
+<h3 id="usage-assess">Assess</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>badfarm scan ssh://web1.example.com --checkpoint before
+badfarm scan local --profile posture        # profiles: default, posture, faults, exposure,
+                                            # software, compromise, capacity, diagnostics
+badfarm scan local --only configuration.resolver
+badfarm scan local --skip exposure.unexpected-listener
+badfarm checks                              # list every registered check
+badfarm eol local                           # lifecycle findings
+badfarm vulnerabilities local --stored      # vulnerability and patch findings, from the store
+badfarm compromise local                    # confidence-scored compromise indicators</code></pre></div>
+<h3 id="usage-fleet">A fleet</h3>
+<p>Give any assessment a file of selectors. Output follows the file order, and one unreachable target never ends the run.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>cat &gt; targets.txt &lt;&lt;'EOF'
+ssh://web1.example.com
+ssh://edge1.example.com   # comments and blank lines are ignored
+docker://local
+EOF
+badfarm scan --targets targets.txt --concurrency 8</code></pre></div>
+<p>For an outage across many hosts, <code>triage</code> is the fast path. It runs a short profile (failed units, kernel faults, disk and inode space, memory pressure, container and pod health) and writes nothing to the store unless you pass <code>--save</code>:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>badfarm triage --inventory ssh-config                 # every Host alias in ~/.ssh/config
+badfarm triage --inventory ansible:inventory/prod.ini --concurrency 256
+badfarm triage ssh://web1.example.com ssh://edge1.example.com</code></pre></div>
+<p>For very large fleets, run badfarm on each host instead of over SSH: <code>badfarm agent run</code> writes a result file locally, the controller stores collected files with <code>badfarm ingest</code>, and <code>badfarm fleet status</code> reports on them.</p>
+<h3 id="usage-query">Query what was already found</h3>
+<p>These read the store only. They never contact a target.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>badfarm findings --severity critical,high
+badfarm findings --older-than 30d --category vulnerability
+badfarm findings --check-id health.kernel-fault
+badfarm findings --only-resolved
+badfarm history ssh://web1.example.com --since 2026-01-01T00:00:00Z
+badfarm worklist                            # pending security updates and reboots, grouped
+badfarm prioritize --ownership ownership.json</code></pre></div>
+<h3 id="usage-troubleshoot">Troubleshoot containers and pods</h3>
+<p><code>badfarm troubleshoot TARGET</code> diagnoses Docker and Kubernetes or k3s workloads: OOM kills, crash loops, image pull and configuration failures, unschedulable or not-ready pods, node pressure, services with no endpoints and warning events. Each diagnosis lists likely causes and the exact read-only commands to run next; <code>--logs</code> adds bounded, redacted log reads.</p>
+<h3 id="usage-iac">Scan infrastructure code</h3>
+<p><code>badfarm iac scan PATH</code> statically reads Ansible, Terraform/HCL, Kubernetes manifests and compose files for changes that could cause an outage, lock an administrator out, open an exposure or leak a secret. Nothing in the tree is executed, rendered, planned or applied. Output is text, JSON or SARIF. Without the <code>iac</code> extra a tree with YAML reports <code>incomplete</code>, never <code>pass</code>.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>badfarm iac scan .
+python3 -m badfarm.iac scan ./infra --format sarif --fail-on medium &gt; iac.sarif
+python3 -m badfarm.iac scan ./repo --diff origin/main..HEAD    # pull-request gate: new findings only
+python3 -m badfarm.iac rules</code></pre></div>
+<h3 id="usage-cases">Investigations, accepted risk and backups</h3>
+<ul>
+<li><code>badfarm case</code> tracks an investigation and preserves its evidence, including bounded log collection; cases can be verified, exported, retained, closed and pruned.</li>
+<li><code>badfarm exception accept FINDING --target SELECTOR --owner alice --reason '...' --expires-at TIME</code> records owned, scoped, expiring accepted risk (at most 90 days). It never resolves the finding or changes exit codes. <code>exception list</code> and <code>exception revoke</code> manage them.</li>
+<li><code>badfarm backup --output backup.db</code> writes a consistent private copy of the store.</li>
+</ul>
+
+<h2 id="config">Data, policy and the store</h2>
+<h3 id="store">The store</h3>
+<p>The SQLite store defaults to <code>$BADFARM_DB</code>, otherwise <code>~/.local/state/badfarm/badfarm.db</code> on Linux (honouring <code>$XDG_STATE_HOME</code>) and <code>~/Library/Application Support/badfarm/badfarm.db</code> on macOS. <code>--db</code> overrides it. The directory is created <code>0700</code> and the database <code>0600</code>; a state directory that is not a private directory you own is refused. Stores upgrade to schema 5 in place; back up with <code>badfarm backup</code> before upgrading.</p>
+<h3 id="risk-data">Risk data</h3>
+<p>badfarm ships no exploitation, prediction or backport data, because a bundled copy goes stale silently. Supply each source yourself; an unconfigured, malformed or stale file becomes a coverage finding.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>badfarm --kev-data ./data/kev.json \
+  --epss-data ./data/epss.json \
+  --backport-data ./data/debian-tracker.json scan local</code></pre></div>
+<p>Each data file carries <code>schema_version</code>, <code>generated_at</code>, <code>max_age_days</code>, its upstream <code>source</code> and an optional <code>checksum</code>. <code>--offline</code> disables active advisory queries; the missing coverage is reported, not hidden.</p>
+<h3 id="policy">Policy data</h3>
+<p>Expected listener ports, expected setuid files, sshd policy, TLS certificate paths, DNS, TLS and HTTP checks, profile membership and similar settings are policy data, not code. Override them with <code>--policy-data FILE</code>:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>{
+  "schema_version": 1,
+  "generated_at": "2026-08-28T00:00:00Z",
+  "max_age_days": 3650,
+  "source": "internal baseline",
+  "policy": {
+    "expected_listener_ports": [22, 443],
+    "expected_setuid": ["/usr/bin/sudo"],
+    "profiles": {"minimal": ["configuration.resolver"]}
+  }
+}</code></pre></div>
+
+<h2 id="exit">Exit codes</h2>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Exit</th><th scope="col">scan, fleet runs and single-target assessments</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>No findings needing attention and no reported incompleteness.</td></tr>
+<tr><td>1</td><td>A fail, warn or unknown finding, an unreachable target, or incomplete receipts.</td></tr>
+<tr><td>2</td><td>An invalid selector, or a handled request or controller error.</td></tr>
+<tr><td>130</td><td>Interrupted by the operator.</td></tr>
+</tbody></table></div>
+<p><code>triage</code> adds exit <code>3</code>: no problems found, but some target was not fully triaged. <code>worklist</code> exits <code>1</code> when at least one host needs an upgrade or a reboot.</p>
+
+<h2 id="fit">How it fits with the other tools</h2>
+<ul>
+<li><strong>badfarm discovers.</strong> It is the evidence source for the rest of the chain.</li>
+<li><strong><a href="/docs/goodfarm.html">goodfarm</a> plans repairs</strong> from stored badfarm findings, sends approved requests to vpscfgfarm, and verifies recovery against a later badfarm checkpoint.</li>
+<li><strong><a href="/docs/vpscfgfarm.html">vpscfgfarm</a> executes</strong> through its gates. Its deploy preflight and <code>fleet iac</code> command run badfarm's IaC scan when badfarm is installed.</li>
+<li><strong><a href="/docs/oos.html">oos</a></strong> is checked by badfarm's <code>health.oos-agent</code> probe on Linux hosts.</li>
+<li><strong><a href="/docs/farmops.html">farmops</a></strong> catalog entries name badfarm check IDs in their prechecks and postchecks. farmops does not run them yet.</li>
+</ul>
+
+<h2 id="links">Links</h2>
+<ul>
+<li><a href="https://github.com/afterdarksys/badfarm#readme">Full README on GitHub</a></li>
+<li><a href="https://github.com/afterdarksys/badfarm/blob/main/OPERATIONS.md">Operator workflow (OPERATIONS.md)</a></li>
+<li><a href="https://github.com/afterdarksys/badfarm/blob/main/docs/TRIAGE.md">Fleet triage</a>, <a href="https://github.com/afterdarksys/badfarm/blob/main/docs/CONTAINERS.md">containers and Kubernetes</a>, <a href="https://github.com/afterdarksys/badfarm/blob/main/docs/DIAGNOSTICS.md">outage diagnostics</a>, <a href="https://github.com/afterdarksys/badfarm/blob/main/docs/IAC.md">IaC scan</a>, <a href="https://github.com/afterdarksys/badfarm/blob/main/docs/AGENT.md">local agent mode</a></li>
+<li><a href="https://github.com/afterdarksys/badfarm/blob/main/CHANGELOG.md">Changelog</a></li>
+<li><a href="https://github.com/afterdarksys/badfarm/tags">Tagged versions</a> (v0.4.0; no packaged release downloads)</li>
+<li><a href="https://github.com/afterdarksys/badfarm/blob/main/LICENSE">Apache 2.0 license</a></li>
+<li><a href="https://github.com/afterdarksys/badfarm/issues">Issue tracker</a></li>
+<li><a href="https://github.com/afterdarksys/badfarm/blob/main/SECURITY.md">Security policy</a></li>
+</ul>
+<p class="source-note">Built from the public <a href="https://github.com/afterdarksys/badfarm">badfarm repository</a> (README.md, OPERATIONS.md, docs/TRIAGE.md, docs/IAC.md, docs/CONTAINERS.md and the badfarm --help output) at commit 99bad35.</p>
+
+</article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

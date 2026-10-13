@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Farm tool guides | OpenSAH / dev</title><meta name="description" content="Installation, usage and reference guides for vpscfgfarm, badfarm, goodfarm, farmops, oos and Out of Danger."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/"><meta property="og:type" content="website"><meta property="og:title" content="Farm tool guides | OpenSAH / dev"><meta property="og:description" content="Installation, usage and reference guides for vpscfgfarm, badfarm, goodfarm, farmops, oos and Out of Danger."><meta property="og:url" content="https://opensah.dev/docs/"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Farm tool guides</p><h1>Farm tool guides.</h1><p>How to install and use the fleet and operations tools: what each one does, where its safety boundary is, and how they fit together.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Farm tool guides</strong><a href="/docs/" aria-current="page">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a></aside><article class="docs-content">
+
+<h2 id="guides">Pick a tool.</h2>
+<p>Each guide covers requirements, installation, a first session, the main commands and configuration, and links to the full documentation in the tool's public repository.</p>
+<div class="docs-cards">
+<a class="docs-card" href="/docs/vpscfgfarm.html"><span class="big-label">Fleet gates</span><h3>vpscfgfarm</h3><p>A governor, contracts, runbooks, approvals and a journal in front of every command sent to an SSH fleet.</p></a>
+<a class="docs-card" href="/docs/badfarm.html"><span class="big-label">Discovery</span><h3>badfarm</h3><p>Read-only assessment of hosts, containers, Kubernetes and infrastructure code, with stored evidence.</p></a>
+<a class="docs-card" href="/docs/goodfarm.html"><span class="big-label">Repairs</span><h3>goodfarm</h3><p>Plan, approve, submit, reconcile and verify service repairs. Ships with badfarm.</p></a>
+<a class="docs-card" href="/docs/farmops.html"><span class="big-label">Early development</span><h3>farmops</h3><p>The catalog format, loader and journal for routine operations. Scheduling is planned.</p></a>
+<a class="docs-card" href="/docs/oos.html"><span class="big-label">Disk headroom</span><h3>oos</h3><p>Free-space checks against a policy, and guarded cleanup into a quarantine you can restore.</p></a>
+<a class="docs-card" href="/docs/outofdanger.html"><span class="big-label">Command safety</span><h3>Out of Danger</h3><p>A fail-closed policy wrapper for commands such as <code>rm</code>.</p></a>
+</div>
+
+<h2 id="fit">How they fit together.</h2>
+<div class="protocol"><span>badfarm discovers</span><span>→ goodfarm plans</span><span>→ vpscfgfarm executes</span><span>→ badfarm verifies</span></div>
+<ul>
+<li><strong>badfarm</strong> assesses targets read-only and stores findings with their evidence.</li>
+<li><strong>goodfarm</strong> binds selected findings to a vpscfgfarm service contract, gets the exact request approved by vpscfgfarm, submits it once, and verifies recovery against a later badfarm scan. Today only the <code>service-deploy/v1</code> recipe executes; distro security upgrades and reboots can be planned and approved, but their execution is refused until it is graduated.</li>
+<li><strong>vpscfgfarm</strong> holds all of the authority. Its governor, deny floor, scopes and postures apply to every request, including goodfarm's.</li>
+<li><strong>farmops</strong> is planned to schedule routine work under standing grants that vpscfgfarm checks on every call. Only its catalog format, loader and journal exist today.</li>
+<li><strong>oos</strong> and <strong>Out of Danger</strong> work on their own, on one machine. badfarm reports on the oos hourly agent where it is installed.</li>
+</ul>
+
+<h2 id="status">Versions and licenses.</h2>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Tool</th><th scope="col">Language</th><th scope="col">Latest tag</th><th scope="col">License</th></tr></thead>
+<tbody>
+<tr><td>vpscfgfarm</td><td>Python 3.9+</td><td>v0.1.0</td><td>Apache 2.0</td></tr>
+<tr><td>badfarm and goodfarm</td><td>Python 3.9+</td><td>v0.4.0</td><td>Apache 2.0</td></tr>
+<tr><td>farmops</td><td>Python 3.9+</td><td>None (0.0.1)</td><td>MIT</td></tr>
+<tr><td>oos</td><td>Go 1.24+</td><td>v0.7.1</td><td>MIT</td></tr>
+<tr><td>Out of Danger</td><td>Rust</td><td>v0.1.0</td><td>MIT</td></tr>
+</tbody></table></div>
+<p>None of these tools publishes packaged release downloads yet. Install from source as each guide shows. Development continues on each repository's default branch, so a guide can describe behaviour that is newer than the latest tag; the guides say so where it matters.</p>
+
+</article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

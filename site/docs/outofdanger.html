@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Out of Danger guide | OpenSAH / dev</title><meta name="description" content="Install, configure and use Out of Danger, a fail-closed policy wrapper for commands such as rm."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/outofdanger.html"><meta property="og:type" content="website"><meta property="og:title" content="Out of Danger guide | OpenSAH / dev"><meta property="og:description" content="Install, configure and use Out of Danger, a fail-closed policy wrapper for commands such as rm."><meta property="og:url" content="https://opensah.dev/docs/outofdanger.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Farm tool guides</p><h1>Out of Danger.</h1><p>A fail-closed policy wrapper for commands such as <code>rm</code>. It checks arguments and protected paths, then runs the real executable only when policy allows.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html" aria-current="page">Out of Danger</a></aside><article class="docs-content">
+
+<span class="pill available">Available</span> <span class="pill">Tag v0.1.0</span> <span class="pill">MIT</span>
+<nav aria-label="On this page"><ul>
+<li><a href="#what">What it is</a></li>
+<li><a href="#requirements">Requirements</a></li>
+<li><a href="#install">Build and install</a></li>
+<li><a href="#quick-start">Quick start</a></li>
+<li><a href="#policy">The policy file</a></li>
+<li><a href="#commands">Commands and exit codes</a></li>
+<li><a href="#limits">Limits</a></li>
+<li><a href="#fit">How it fits with the other tools</a></li>
+<li><a href="#links">Links</a></li>
+</ul></nav>
+
+<h2 id="what">What it is</h2>
+<p>Out of Danger is one small binary that you symlink under the names of the commands you want to guard. When it is invoked as <code>rm</code>, it reads its policy, decides, and then replaces itself with the configured real executable only if the operation is allowed. Anything doubtful is refused: a malformed policy, an unreadable lock file or an invalid real path stops the command rather than letting it through.</p>
+<p>Use it to put a safety rail on the normal command path of a workstation or server, for example to stop a recursive delete of <code>/</code>, of the current directory, or of a tree you have marked as protected.</p>
+<div class="notice"><p><strong>What it is not.</strong> It is not a security boundary. The real executable stays accessible, and running it directly (for example <code>/bin/rm</code>) bypasses the wrapper by design. It prevents mistakes made through the normal command path; it does not contain a hostile user.</p></div>
+
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li>A Rust toolchain with Cargo (the project builds with the stable toolchain; CI runs on Ubuntu and macOS).</li>
+<li>No third-party runtime or build dependencies.</li>
+<li>A POSIX system where commands are found through <code>PATH</code>.</li>
+</ul>
+
+<h2 id="install">Build and install</h2>
+<p>Build from a clone of the public repository:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>git clone https://github.com/afterdarksys/outofdanger.git
+cd outofdanger
+cargo build --release</code></pre></div>
+<p>The binary is <code>target/release/outofdanger</code>. Check it:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>target/release/outofdanger version
+target/release/outofdanger validate --config examples/outofdanger.conf</code></pre></div>
+<p><code>version</code> prints <code>outofdanger 0.1.0</code> for the tagged release, and <code>validate</code> prints <code>valid: 1 commands</code> for the example policy.</p>
+<h3 id="install-safely">Install without replacing system binaries</h3>
+<p>Do not replace operating-system binaries. Install the wrapper in its own directory and put the command symlinks in a dedicated directory earlier in <code>PATH</code>:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>install -d "$HOME/.local/lib/outofdanger" "$HOME/.local/bin/outofdanger-wrappers"
+install -m 0755 target/release/outofdanger "$HOME/.local/lib/outofdanger/outofdanger"
+"$HOME/.local/lib/outofdanger/outofdanger" link \
+  --config "$PWD/examples/outofdanger.conf" \
+  --dir "$HOME/.local/bin/outofdanger-wrappers"</code></pre></div>
+<p>Then set <code>OUT_OF_DANGER_CONFIG</code> to the policy you deployed and prepend the wrapper directory to <code>PATH</code>. <code>link</code> creates only missing links and refuses to replace any existing path.</p>
+<p>For a system-wide install, use the same layout under <code>/usr/local</code>, keep each real path pointed at the operating-system executable, and deploy the policy as <code>/etc/outofdanger.conf</code>, the default location. Avoid renaming package-managed binaries: an upgrade can replace them and silently bypass or break the wrapper.</p>
+
+<h2 id="quick-start">Quick start</h2>
+<p>Try a policy decision without installing anything. <code>check</code> evaluates and prints the decision; it never executes the command.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>$ target/release/outofdanger check --config examples/outofdanger.conf --command rm -- -rf /
+deny: rm (built-in guard recursive-root (use `permit rm recursive-root` to override))
+$ echo $?
+10
+$ target/release/outofdanger check --config examples/outofdanger.conf --command rm -- /tmp/scratch.txt
+allow: rm (command default)</code></pre></div>
+<p>Replace <code>check</code> with <code>run</code> to evaluate and then execute the real command when it is allowed. Once the symlinks are on <code>PATH</code>, a plain <code>rm</code> goes through the same decision.</p>
+
+<h2 id="policy">The policy file</h2>
+<p>The policy is a plain text file. The default path is <code>/etc/outofdanger.conf</code>; <code>OUT_OF_DANGER_CONFIG</code> or <code>--config</code> overrides it. The example in the repository:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code># Every command needs an absolute real path and an explicit default.
+# Rules are evaluated top-to-bottom; the first match wins.
+# `*` matches within one argument and `**` matches zero or more arguments.
+
+command rm /bin/rm
+default rm allow
+
+protect rm /etc
+protect rm /var/lib
+
+# Optional controls:
+# max-operands rm 20
+# guard rm recursive-cwd
+# lock-file rm /etc/outofdanger.STOP</code></pre></div>
+<h3 id="policy-required">Required lines</h3>
+<ul>
+<li><code>command NAME ABSOLUTE_REAL_PATH</code> names a guarded command and the real executable it runs.</li>
+<li><code>default NAME allow|deny</code> is the decision when no rule matches.</li>
+</ul>
+<h3 id="policy-rules">Argument rules</h3>
+<p>Ordered <code>allow</code> and <code>deny</code> rules take the form <code>ACTION NAME ARG_PATTERN...</code>, and the first matching rule wins. <code>*</code> and <code>?</code> match characters inside one argument; the token <code>**</code> matches zero or more complete arguments. Values may be single- or double-quoted, and <code>#</code> starts a comment outside quotes.</p>
+<h3 id="policy-controls">Safety controls</h3>
+<p>These run before the ordered argument rules, so an <code>allow</code> rule cannot bypass them.</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Line</th><th scope="col">Effect</th></tr></thead>
+<tbody>
+<tr><td>(built in)</td><td>Recursive removal of <code>/</code>, <code>//</code>, relative paths that resolve to root and equivalent spellings is denied. Only <code>permit rm recursive-root</code> disables this guard.</td></tr>
+<tr><td><code>protect rm PATH</code></td><td>Denies removing the directory itself or anything under it, and recursive removal of its ancestors. Relative operands and existing symlink prefixes are resolved, including missing leaf paths. PATH must be absolute.</td></tr>
+<tr><td><code>max-operands rm N</code></td><td>Denies removing more than N operands, recursive or not. Flags do not count; arguments after <code>--</code> do.</td></tr>
+<tr><td><code>guard rm recursive-cwd</code></td><td>Denies recursive removal of the current directory or any ancestor, such as <code>rm -rf .</code>.</td></tr>
+<tr><td><code>lock-file NAME PATH</code></td><td>Denies every invocation of NAME while PATH exists, including as a dangling symlink. Remove the file to resume. Use a dedicated path in a directory you control.</td></tr>
+</tbody></table></div>
+<p>The tree, operand-count and working-directory controls support <code>rm</code> only. Other commands use argument rules and the optional lock file. The names <code>outofdanger</code> and <code>ood</code> are reserved for the management interface.</p>
+
+<h2 id="commands">Commands and exit codes</h2>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>outofdanger check [--config PATH] --command NAME -- ARGS...
+outofdanger run [--config PATH] --command NAME -- ARGS...
+outofdanger validate [--config PATH]
+outofdanger commands [--config PATH]
+outofdanger link [--config PATH] --dir PATH
+outofdanger help
+outofdanger version</code></pre></div>
+<ul>
+<li><code>check</code> prints <code>allow</code> or <code>deny</code> with the reason, and never executes.</li>
+<li><code>run</code> evaluates, then executes the real command if allowed.</li>
+<li><code>validate</code> checks policy syntax and every real command target without executing them. Missing targets, non-executable files, directories, and links back to the wrapper (including hard links) fail.</li>
+<li><code>commands</code> lists each configured command, its real path and its default.</li>
+<li><code>link</code> creates a symlink per configured command in <code>--dir</code>, and refuses to replace anything that already exists.</li>
+</ul>
+<p>An allowed check exits <code>0</code>. A denied operation exits <code>10</code>. Configuration and usage errors exit <code>2</code>.</p>
+
+<h2 id="limits">Limits</h2>
+<ul>
+<li>The built-in root guard and the path and count guards understand <code>rm</code>. Other commands get argument rules and emergency locks.</li>
+<li>Argument globs are lexical. They do not resolve symlinks, shell expansions, working-directory-relative paths or command-specific meaning. Use <code>protect</code> for filesystem trees.</li>
+<li>Only invocations that resolve to a wrapper symlink on <code>PATH</code> are controlled.</li>
+<li>Resolution is conservative: a symlink operand can be denied even when <code>rm</code> would only unlink the link. Paths can change between evaluation and execution, so this is not atomic filesystem enforcement.</li>
+<li><code>validate</code> checks executable mode bits, not ACLs or mount-level execution restrictions.</li>
+</ul>
+
+<h2 id="fit">How it fits with the other tools</h2>
+<p>Out of Danger is standalone. It does not read or write the state of the other farm tools. It guards the commands an operator types on one machine. <a href="/docs/vpscfgfarm.html">vpscfgfarm</a> is the gate for commands sent to a fleet, and <a href="/docs/oos.html">oos</a> manages disk cleanup with its own refusal rules.</p>
+
+<h2 id="links">Links</h2>
+<ul>
+<li><a href="https://github.com/afterdarksys/outofdanger#readme">Full README on GitHub</a></li>
+<li><a href="https://github.com/afterdarksys/outofdanger/blob/main/examples/outofdanger.conf">Example policy</a></li>
+<li><a href="https://github.com/afterdarksys/outofdanger/tags">Tagged versions</a> (v0.1.0; no packaged release downloads)</li>
+<li><a href="https://github.com/afterdarksys/outofdanger/blob/main/LICENSE">MIT license</a></li>
+<li><a href="https://github.com/afterdarksys/outofdanger/issues">Issue tracker</a></li>
+<li><a href="https://github.com/afterdarksys/outofdanger/blob/main/SECURITY.md">Security policy</a>: report a bypass privately through GitHub's private vulnerability reporting, not as a public issue.</li>
+</ul>
+<p class="source-note">Built from the public <a href="https://github.com/afterdarksys/outofdanger">outofdanger repository</a> (README.md, SECURITY.md, examples/outofdanger.conf, src/main.rs help text) at commit 411a1fc.</p>
+
+</article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

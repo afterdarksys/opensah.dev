@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>goodfarm guide | OpenSAH / dev</title><meta name="description" content="Use goodfarm, shipped with badfarm, to plan, approve, submit, reconcile and independently verify service repairs through vpscfgfarm."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/goodfarm.html"><meta property="og:type" content="website"><meta property="og:title" content="goodfarm guide | OpenSAH / dev"><meta property="og:description" content="Use goodfarm, shipped with badfarm, to plan, approve, submit, reconcile and independently verify service repairs through vpscfgfarm."><meta property="og:url" content="https://opensah.dev/docs/goodfarm.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Farm tool guides</p><h1>goodfarm: reviewed repairs.</h1><p>Bind badfarm findings to a vpscfgfarm contract, get the exact request approved, submit it once, and verify recovery with a later scan.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html" aria-current="page">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a></aside><article class="docs-content">
+
+<span class="pill available">Available</span> <span class="pill">Ships with badfarm v0.4.0</span> <span class="pill">Apache 2.0</span>
+<nav aria-label="On this page"><ul>
+<li><a href="#what">What it is</a></li>
+<li><a href="#requirements">Requirements and install</a></li>
+<li><a href="#workflow">The workflow</a></li>
+<li><a href="#recipes">Recipes</a></li>
+<li><a href="#inputs">Ownership and restore evidence</a></li>
+<li><a href="#plan">Plan and validate</a></li>
+<li><a href="#approve">Approve and submit</a></li>
+<li><a href="#reconcile">Status, history and resume</a></li>
+<li><a href="#verify">Verify recovery</a></li>
+<li><a href="#rollout">Canary rollouts</a></li>
+<li><a href="#iac">Service source IaC review</a></li>
+<li><a href="#exit">Exit codes</a></li>
+<li><a href="#fit">How it fits with the other tools</a></li>
+<li><a href="#links">Links</a></li>
+</ul></nav>
+
+<h2 id="what">What it is</h2>
+<p>goodfarm is the repair-planning and recovery module of <a href="/docs/badfarm.html">badfarm</a>. It turns selected badfarm findings into an immutable, content-addressed repair plan bound to a <a href="/docs/vpscfgfarm.html">vpscfgfarm</a> service contract, asks vpscfgfarm to approve the exact request, submits it once, reconciles the result without blind retries, and then checks recovery against a fresh badfarm scan. Use it when a finding should be fixed through a reviewed, recorded change rather than by hand.</p>
+<div class="notice"><p><strong>What it is not.</strong> goodfarm never turns a finding's recommendation into a shell command, and it holds no authority of its own. It invokes the sanctioned vpscfgfarm wrapper only for explicit repair-protocol operations, and every vpscfgfarm gate (governor, deny floor, scopes, freeze, host posture) still applies. Only the <code>service-deploy/v1</code> recipe can execute today. Plan files and checksums are integrity checks, not signatures; actor fields are audit labels.</p></div>
+
+<h2 id="requirements">Requirements and install</h2>
+<ul>
+<li>badfarm installed (goodfarm ships in the same distribution; see <a href="/docs/badfarm.html#install">install badfarm</a>). PyYAML is needed for executor and YAML work: install with <code>'.[yaml]'</code> or <code>'.[yaml,iac]'</code>.</li>
+<li>An existing badfarm store. goodfarm needs one for everything except help, version and the recipe catalog.</li>
+<li>A vpscfgfarm checkout with a governor, the service's contract, and a clean, committed service source tree, passed as <code>--vpscfg-repo</code>.</li>
+</ul>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>goodfarm --version
+goodfarm recipes</code></pre></div>
+<p>Without installing, use <code>python3 -m badfarm.goodfarm</code>. <code>--db</code> works before or after the command and defaults to the same per-user store as badfarm (<code>$BADFARM_DB</code> overrides it).</p>
+
+<h2 id="workflow">The workflow</h2>
+<div class="protocol"><span>plan</span><span>→ validate</span><span>→ request</span><span>→ approve</span><span>→ submit</span><span>→ scan</span><span>→ verify</span></div>
+<p>At any point, <code>goodfarm next PLAN_OR_ID</code> prints where a plan is and the exact next command. It is read-only.</p>
+
+<h2 id="recipes">Recipes</h2>
+<p>A recipe defines its prerequisites, changes, rollback and checks in code. <code>goodfarm recipes</code> lists them:</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Recipe</th><th scope="col">Bound from</th><th scope="col">Status</th></tr></thead>
+<tbody>
+<tr><td><code>service-deploy/v1</code></td><td>A service finding with explicit ownership</td><td>Executes through the contract's existing deploy path: lock, live outage check, fresh backup, sync, build, contract verify, drift confirmation, unlock.</td></tr>
+<tr><td><code>distro-security-upgrade/v1</code></td><td><code>software.pending-security-updates</code></td><td>Can be planned, described and approved. Submitting fails closed: no package is installed until execution is graduated.</td></tr>
+<tr><td><code>reboot/v1</code></td><td><code>health.reboot-required</code></td><td>Can be planned and approved. Submitting fails closed: no reboot command is sent.</td></tr>
+</tbody></table></div>
+<p>Host-fault findings (kernel faults, disk faults, OOM, reboot storms, failed units) stay in the badfarm store for review and investigation cases. They do not become recipes.</p>
+
+<h2 id="inputs">Ownership and restore evidence</h2>
+<p>Start from a fresh, complete badfarm scan using the same check policy and datasets you will use to verify. A recipe plan needs that versioned evidence; historical scans and missing coverage do not qualify.</p>
+<p>An ownership file binds service contracts to target scopes and assets. Service names must match vpscfgfarm contracts, dependencies must be acyclic, criticality is 1 to 5, and exposure is <code>public</code>, <code>internal</code>, <code>isolated</code> or <code>unknown</code>:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>{
+  "schema_version": 1,
+  "services": [
+    {
+      "service": "shop",
+      "target": "ssh://web1",
+      "asset_ids": ["asset-REPLACE_WITH_OBSERVED_ID"],
+      "depends_on": [],
+      "shared_resources": ["volume:shared-assets"],
+      "criticality": 4,
+      "exposure": "public"
+    }
+  ]
+}</code></pre></div>
+<p>For <code>service-deploy/v1</code>, the vpscfgfarm contract must have <code>repo</code>, <code>sync.include</code>, <code>sync.never</code>, backup and verify steps, and an explicit <code>blast_radius.max_other_containers</code>. Supply a restore drill record from the last 30 days. It is operator-supplied evidence, reviewed as part of the request:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>{
+  "kind": "restore-drill",
+  "host": "web1",
+  "service": "shop",
+  "verified": true,
+  "tested_at": "REPLACE_WITH_ACTUAL_RFC3339_TIME",
+  "reference": "REPLACE_WITH_RESTORE_DRILL_EVIDENCE_REFERENCE",
+  "verifier": "alice"
+}</code></pre></div>
+
+<h2 id="plan">Plan and validate</h2>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>goodfarm plan bf-FINDING_ID \
+  --target ssh://web1 --service shop --vpscfg-repo ../vpscfgfarm \
+  --ownership ownership.json --rollback-proof drill.json \
+  --actor alice --rollback 'Restore the tested image and pre-change archive' \
+  --ttl 3600 --output repair.json
+
+goodfarm validate repair.json --vpscfg-repo ../vpscfgfarm</code></pre></div>
+<p>A plan binds the assessment, the selected findings, ownership, recipe, restore record, expected asset replacements and executor and source descriptors. The TTL is 60 to 86400 seconds, and the source assessment can be at most 24 hours old. <code>validate</code> checks stored evidence, expiry and current executor inputs. A new scan invalidates a pending plan even if the findings look unchanged. A passing validation means the plan can be reviewed, not that it is authorised.</p>
+<p>To review a replacement in advance (for example a container that will come back with a new identity), add <code>--transitions transitions.json</code>. Each replacement must match exactly one newly observed asset, and the old asset must be gone.</p>
+
+<h2 id="approve">Approve and submit</h2>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>goodfarm request gf-PLAN_ID --output request.json
+goodfarm approve gf-PLAN_ID --vpscfg-repo ../vpscfgfarm \
+  --approve-digest sha256:REPLACE_WITH_REQUEST_DIGEST
+goodfarm submit gf-PLAN_ID --vpscfg-repo ../vpscfgfarm \
+  --approval REPLACE_WITH_EXECUTOR_APPROVAL</code></pre></div>
+<ul>
+<li><code>request</code> exports the exact versioned executor request and prints its <code>request_digest</code>.</li>
+<li><code>approve</code> asks the vpscfgfarm governor to approve that digest. For <code>service-deploy/v1</code> it runs a read-only live preflight through the wrapper. It returns a single-use <code>approval</code> value: keep it private and out of tickets and logs. Approval is governed by local OS access to the executor, not a separate identity service. Changing the plan needs a new approval.</li>
+<li><code>submit</code> sends the approved request once. The approval is consumed atomically with the creation of the executor operation. Preflight expires after 300 seconds and is repeated under the host lock; changed policy, source or live state refuses execution.</li>
+</ul>
+
+<h2 id="reconcile">Status, history and resume</h2>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>goodfarm status gf-PLAN_ID
+goodfarm history gf-PLAN_ID
+goodfarm resume gf-PLAN_ID --vpscfg-repo ../vpscfgfarm</code></pre></div>
+<p>goodfarm records <code>submitted</code> before calling the executor. A timeout or dropped connection becomes <code>execution-unknown</code>, and <code>resume</code> only queries the operation ID; it never resubmits. Submitting the same request again returns the existing receipt instead of repeating the change. A missing receipt is not permission to retry: inspect the executor journal and host lock first. The executor's operation database is <code>journal/repair.sqlite3</code> in the vpscfgfarm checkout. Back it up with SQLite's backup facilities and never delete it to clear an error.</p>
+
+<h2 id="verify">Verify recovery</h2>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>badfarm scan ssh://web1 --checkpoint after-repair
+goodfarm verify repair.json --checkpoint after-repair</code></pre></div>
+<p>Verification compares stored checkpoints; it does not scan by itself. Use the same data and policy options as the original scan.</p>
+<ul>
+<li><code>recovery_verified</code> needs every selected finding resolved, complete comparable checks, no unknown findings, no new or worse findings, and the selected assets observed.</li>
+<li><code>execution_verified</code> also needs a matching applied executor receipt and a scan taken after execution.</li>
+</ul>
+<p>Only both claims move a repair to <code>recovered</code>. A clean scan without a receipt is <code>observed-recovery</code>. Recovery is scoped to the selected findings; it does not certify the whole target.</p>
+
+<h2 id="rollout">Canary rollouts</h2>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>badfarm prioritize --ownership ownership.json
+goodfarm rollout create gf-CANARY gf-FOLLOWER --canary gf-CANARY --max-hosts 3
+goodfarm rollout next rollout-ID
+goodfarm rollout submit rollout-ID --vpscfg-repo ../vpscfgfarm \
+  --approval REPLACE_WITH_NEXT_PLAN_APPROVAL</code></pre></div>
+<p>A rollout orders recipe plans by dependency, with one canary first. Host bounds are 1 to 10 and concurrency is one. Every member needs its own exact approval, and only verified recovery of the earlier member releases the next. Unknown execution, refusal, rollback, incomplete verification or a regression halts the rollout. goodfarm does not scan in the background: you collect fresh evidence between members.</p>
+
+<h2 id="iac">Service source IaC review</h2>
+<p>Every new plan records an <code>iac-review</code> gate. When the contract names a <code>repo</code>, goodfarm scans that tree in-process with badfarm's IaC scanner; nothing in it runs. Critical and high findings, author-written suppressions of them, and an incomplete scan refuse the plan. Accept a reviewed location explicitly:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>goodfarm plan bf-FINDING_ID ... --accept-iac iac.tf.open_ingress:net/sg.tf:12 \
+  --accept-iac-reason 'Bastion ingress, reviewed by ops'</code></pre></div>
+
+<h2 id="exit">Exit codes</h2>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Exit</th><th scope="col">Meaning</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>Success</td></tr>
+<tr><td>1</td><td>Unresolved, halted, refused or uncertain operation result</td></tr>
+<tr><td>2</td><td>Malformed or stale input, or a controller error</td></tr>
+<tr><td>130</td><td>Interrupted</td></tr>
+</tbody></table></div>
+<p>An explicit executor refusal without a receipt can appear as a controller error; inspect it before acting again.</p>
+
+<h2 id="fit">How it fits with the other tools</h2>
+<p><a href="/docs/badfarm.html">badfarm</a> supplies the findings and the later checkpoint. goodfarm plans and coordinates. <a href="/docs/vpscfgfarm.html">vpscfgfarm</a> approves and executes through its repair protocol (<code>--repair-action describe</code>, <code>approve</code>, <code>apply</code> and <code>status</code> on its deploy command), with every gate in force. Scheduling repairs as routine work is <a href="/docs/farmops.html">farmops</a>'s planned role and does not exist yet.</p>
+
+<h2 id="links">Links</h2>
+<ul>
+<li><a href="https://github.com/afterdarksys/badfarm/blob/main/GOODFARM.md">GOODFARM.md on GitHub</a>, the full workflow and its boundaries</li>
+<li><a href="https://github.com/afterdarksys/vpscfgfarm/blob/main/docs/REPAIR-PROTOCOL.md">vpscfgfarm repair protocol</a></li>
+<li><a href="https://github.com/afterdarksys/badfarm/tags">badfarm tagged versions</a> (v0.4.0; no packaged release downloads)</li>
+<li><a href="https://github.com/afterdarksys/badfarm/blob/main/LICENSE">Apache 2.0 license</a></li>
+<li><a href="https://github.com/afterdarksys/badfarm/issues">Issue tracker</a></li>
+</ul>
+<p class="source-note">Built from the public <a href="https://github.com/afterdarksys/badfarm">badfarm repository</a> (GOODFARM.md, README.md and the goodfarm --help and recipes output) at commit 99bad35, and the <a href="https://github.com/afterdarksys/vpscfgfarm">vpscfgfarm repository</a> (docs/REPAIR-PROTOCOL.md) at commit e899b93.</p>
+
+</article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

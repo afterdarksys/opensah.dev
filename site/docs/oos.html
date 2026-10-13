@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>oos guide | OpenSAH / dev</title><meta name="description" content="Install and use oos: disk headroom checks against a policy, guarded cleanup into quarantine, restore, and scripted pre-flight checks."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/oos.html"><meta property="og:type" content="website"><meta property="og:title" content="oos guide | OpenSAH / dev"><meta property="og:description" content="Install and use oos: disk headroom checks against a policy, guarded cleanup into quarantine, restore, and scripted pre-flight checks."><meta property="og:url" content="https://opensah.dev/docs/oos.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Farm tool guides</p><h1>oos: out of space.</h1><p>Find where the disk goes, check free space against a policy, and clean only what the configuration says is safe, into a quarantine you can restore.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html" aria-current="page">oos</a><a href="/docs/outofdanger.html">Out of Danger</a></aside><article class="docs-content">
+
+<span class="pill available">Available</span> <span class="pill">Tag v0.7.1</span> <span class="pill">MIT</span>
+<nav aria-label="On this page"><ul>
+<li><a href="#what">What it is</a></li>
+<li><a href="#requirements">Requirements</a></li>
+<li><a href="#install">Install</a></li>
+<li><a href="#quick-start">Quick start</a></li>
+<li><a href="#concepts">Key concepts</a></li>
+<li><a href="#usage">Usage</a></li>
+<li><a href="#config">Configuration</a></li>
+<li><a href="#scripts">In scripts and for agents</a></li>
+<li><a href="#automation">Agent, daemon and fleet</a></li>
+<li><a href="#fit">How it fits with the other tools</a></li>
+<li><a href="#links">Links</a></li>
+</ul></nav>
+
+<h2 id="what">What it is</h2>
+<p>oos is a small Go tool that knows where the disk goes on a machine, reports headroom against a policy, and cleans up only the entries its configuration lists. Every cleanup is a dry run until you pass <code>--yes</code>, and by default each removal is a move into a quarantine batch that you can restore for a week. Use it when a disk is filling up, before a job that needs space, or as an hourly watcher that tells you before a volume runs out.</p>
+<div class="notice"><p><strong>What it is not.</strong> oos is not a general file deleter. It refuses anything it cannot prove safe: a hard-coded list of operating-system and credential paths that configuration cannot lift, paths outside your home directory unless allowed, symlinks, shallow paths, entries a running process references, and any run larger than the per-run budget. It never runs <code>docker volume prune</code> and never deletes a Time Machine snapshot. Some modes, such as <code>--ensure</code>, <code>--purge</code>, <code>--empty-trash</code> and <code>--permanent</code>, remove data permanently with no restore.</p></div>
+
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li>macOS or Linux.</li>
+<li>Go 1.24 or later to build (from <code>go.mod</code>).</li>
+<li>On Linux, deletion requires <code>/proc/self/fdinfo</code> mount IDs; without them oos refuses to act. Process checks read <code>/proc</code> on Linux and use <code>ps</code> and <code>lsof</code> on macOS.</li>
+</ul>
+
+<h2 id="install">Install</h2>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>go install github.com/afterdarksys/oos/cmd/oos@latest</code></pre></div>
+<p>Or build from a checkout:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>git clone https://github.com/afterdarksys/oos.git
+cd oos
+go build -o oos ./cmd/oos
+go install ./cmd/oos</code></pre></div>
+<p>The repository also has <code>./build.sh</code>: <code>./build.sh install</code> puts the binary in <code>/usr/local/bin</code> (<code>GOBIN</code> overrides), and <code>./build.sh test</code> runs gofmt, vet and the test suite.</p>
+<p>Verify the install. <code>oos -V</code> prints the version, and a bare <code>oos</code> is a quick, read-only check of free space against the policy:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>oos -V
+oos</code></pre></div>
+<p>The latest tag is v0.7.1. The default branch carries further unreleased changes listed in the changelog, including new exit codes; read it before upgrading a fleet.</p>
+
+<h2 id="quick-start">Quick start</h2>
+<p>A first session on a workstation. Nothing below removes anything until the line with <code>-y</code>.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>oos -i                 # write the platform default config to ~/.config/oos/oos.json
+oos -s                 # show the resolved config, policy, state and quarantine batches
+oos -c                 # full check: free space vs policy, and the size of every known entry
+oos -A                 # audit ~ one level deep: size, age, use case, known or unknown
+oos -C                 # cleanup plan (dry run)
+oos -C -y              # clean up for real, into quarantine
+oos -s                 # the new quarantine batch is listed here
+oos --restore 20260908-101500   # undo one batch by its name</code></pre></div>
+<p>Edit <code>~/.config/oos/oos.json</code> before the first real cleanup. The audit's hints are written for the person editing that file: a name that looks like a cache, a git repository that belongs in <code>never_touch</code>, or a hidden directory over 1 GB.</p>
+
+<h2 id="concepts">Key concepts</h2>
+<h3 id="thresholds">Thresholds and status</h3>
+<p><code>policy.warn_free_gb</code> and <code>policy.min_free_gb</code> set the warn and critical lines. Check modes exit <code>1</code> below warn and <code>2</code> below critical, so a script can act on the exit code alone. <code>--warn GB</code> and <code>--critical GB</code> override them for one run.</p>
+<h3 id="entries">Known entries and actions</h3>
+<p>Cleanup only touches paths listed under <code>known_dirs</code> and <code>known_files</code>. Each entry has a <code>type</code> label and an <code>action</code>:</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Action</th><th scope="col">Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>never</code></td><td>Listed so it is measured and reported, never removed.</td></tr>
+<tr><td><code>rm-contents</code></td><td>Empty a directory and keep the directory.</td></tr>
+<tr><td><code>rm-stale-children</code></td><td>Judge each direct child on its own: keep it if a running process references it or anything under it changed within <code>stale_after_hours</code>.</td></tr>
+<tr><td><code>rm</code></td><td>Remove a file.</td></tr>
+<tr><td><code>command</code></td><td>Run a shell command. Skipped unless <code>policy.allow_commands</code> is true (off in the shipped defaults).</td></tr>
+</tbody></table></div>
+<h3 id="quarantine">Quarantine and restore</h3>
+<p>With <code>quarantine: true</code>, each removal renames the path into <code>quarantine_dir/&lt;batch&gt;/&lt;original absolute path&gt;</code> and records it in the batch's <code>manifest.json</code>. Space is not freed until the batch is purged.</p>
+<ul>
+<li><code>--restore BATCH</code> moves everything back. It refuses to overwrite anything that has reappeared and refuses to restore under a protected path.</li>
+<li><code>--purge -y</code> permanently deletes batches older than <code>quarantine_days</code>.</li>
+<li><code>--purge-now -y</code> deletes every batch that is not held. Held batches (missing or invalid manifest, pending move, changed or unrecorded content) are listed with the reason, and only <code>--include-held</code> deletes them.</li>
+<li><code>--verify-quarantine</code> checks manifests and identities; add <code>--deep</code> to check content hashes recorded when <code>policy.quarantine_hash</code> is on.</li>
+</ul>
+<p>Rename cannot cross filesystems, so an entry on a different device from the quarantine directory is refused in the plan. Additional same-filesystem stores are configured under <code>policy.quarantine_volumes</code>.</p>
+<h3 id="guards">Guards</h3>
+<p>Before removing anything, each entry passes a fixed series of guards: not <code>never</code>; absolute; not <code>/</code>; not on the always-disallowed list; no macOS upgrade payload or installer process present; deep enough; under the home directory unless allowed; not under <code>never_touch</code>; exists; not a symlink; the right kind for the action; no guard process running; and on the same device as the quarantine. The always-disallowed list is hard-coded (<code>oos -s</code> prints this platform's list) and includes the system directories plus <code>~/.ssh</code>, <code>~/.gnupg</code>, <code>~/.aws</code>, <code>~/.kube</code> and other credential stores. <code>policy.always_disallowed</code> can only add to it.</p>
+<p>Ask oos what it would do with a path, and which guard would stop it, with <code>-W</code>:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>oos -W ~/.cache/pip    # exit 0: would act, 1: unknown but allowed, 2: refused</code></pre></div>
+
+<h2 id="usage">Usage</h2>
+<h3 id="usage-check">Checking and finding space</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>oos                       # quick check: free space vs policy, no sizing
+oos -c                    # full check: sizes every known entry
+oos -c --fresh            # remeasure everything and refresh the size cache
+oos -d                    # what grew since the last recorded sizes
+oos -S ~/Downloads        # scan for big files, recorded in bigfile.json
+oos --by-type ~/Downloads # totals by file type: disk images, archives, video ...
+oos -S ~/Downloads --ext dmg,iso --older-than 90d --sort oldest --top 10
+oos --who ~/.cache/uv     # what a path is for, which processes use it, newest file
+oos --history 24          # free-space readings, the trend and the forecast
+oos --dupes ~/Downloads -m 200   # identical files over 200 MB, newest copy marked
+oos --downloads           # installed installers, extracted archives, copies, stale files
+oos --scan-builds ~/src   # build output per git repository, with guarded --add lines
+oos --trash               # measure the trash; removes nothing</code></pre></div>
+<h3 id="usage-clean">Cleaning up</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>oos -C                    # cleanup plan, dry run
+oos -C -y                 # cleanup for real (into quarantine)
+oos -C -y -t cache        # only entries of type cache
+oos -C -t cache --tag build-output   # plan narrowed by tag
+oos -C -y -n              # -n wins: still a dry run
+oos -C -y --permanent     # free space now instead of quarantining
+oos --empty-trash --yes   # permanently empty the trash (not quarantine, no restore)</code></pre></div>
+<h3 id="usage-edit">Editing the configuration from the command line</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>oos --add ~/.cache/foo --type cache --action rm-contents --note "seen 2026-09-08"
+oos --add ~/x --type cache --action rm-contents --tags build-output,review
+oos --forget ~/.cache/foo</code></pre></div>
+<p><code>--add</code> and <code>--forget</code> edit the config in place. The result is validated exactly as a load would be before the file is written, and a config file owned by another user, or writable by group or others, is refused.</p>
+
+<h2 id="config">Configuration</h2>
+<p>Lookup order: <code>--config FILE</code> (or <code>-f</code>), then <code>~/.config/oos/oos.json</code>, then the default embedded in the binary (<code>oos.json</code> on macOS, <code>oos.linux.json</code> on Linux). The file must be owned by the effective user and not writable by group or others. Unknown keys are an error, so a typo cannot silently weaken the policy. The file has a <code>policy</code> block and the <code>known_dirs</code> and <code>known_files</code> lists. An entry looks like this:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>{
+  "path": "~/.cache/pip",
+  "type": "cache",
+  "action": "rm-contents",
+  "note": "pip download cache"
+}</code></pre></div>
+<p>Entry fields: <code>path</code>, <code>type</code>, <code>action</code>, <code>command</code> (for <code>action: command</code>), <code>stale_after_hours</code>, <code>use_case</code>, <code>guard_processes</code> (substrings; a matching running process refuses the entry) and <code>note</code>.</p>
+<p>The most important <code>policy</code> keys:</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Key</th><th scope="col">Effect</th></tr></thead>
+<tbody>
+<tr><td><code>min_free_gb</code>, <code>warn_free_gb</code></td><td>Critical and warn thresholds for status, exit code and notification.</td></tr>
+<tr><td><code>require_yes</code></td><td>Without <code>--yes</code>, cleanup and purge only print the plan.</td></tr>
+<tr><td><code>max_delete_gb_per_run</code></td><td>The whole run is refused before anything is touched if the plan exceeds it.</td></tr>
+<tr><td><code>allow_outside_home</code></td><td>Default false: paths outside <code>$HOME</code> are refused.</td></tr>
+<tr><td><code>allow_commands</code></td><td>Default false: <code>action: command</code> entries are skipped and shown as refused.</td></tr>
+<tr><td><code>never_touch</code></td><td>Any path equal to or under these is refused.</td></tr>
+<tr><td><code>always_disallowed</code></td><td>Extra protected paths; adds to the built-in list and never replaces it.</td></tr>
+<tr><td><code>min_path_depth</code></td><td>Refuses shallow paths.</td></tr>
+<tr><td><code>log_file</code>, <code>state_file</code></td><td>The append-only audit log (a live run refuses to start if it cannot open it) and <code>bigfile.json</code>.</td></tr>
+<tr><td><code>quarantine</code>, <code>quarantine_dir</code>, <code>quarantine_days</code></td><td>Move instead of delete, and when batches expire for <code>--purge</code>.</td></tr>
+<tr><td><code>owners</code></td><td>Path or glob patterns that attribute bytes to a use case.</td></tr>
+<tr><td><code>daemon</code></td><td>The resident watcher's interval, socket, alerting and the off-by-default <code>auto_act</code>.</td></tr>
+<tr><td><code>fleet</code>, <code>fleet_timeout_seconds</code></td><td>ssh targets for <code>--fleet</code> and the per-host deadline.</td></tr>
+</tbody></table></div>
+<p>The README documents every key, including Docker, snapshot, forecast and filesystem-budget settings.</p>
+
+<h2 id="scripts">In scripts and for agents</h2>
+<p>Every mode is exit-code first, and <code>-j</code> prints JSON (one document per line with a top-level <code>kind</code>).</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>oos -Q --critical 20 || exit 1          # pre-flight: fail under 20 GB, print nothing
+[ "$(oos -F)" -ge 50 ] || oos -E 50 -y  # bare integer GB; make room if needed
+oos -W ~/.cache/foo -j | jq .verdict
+oos -C -j | jq '.plan[] | select(.refused == null) | .path'
+oos --log-tail 20                       # what the last run actually did</code></pre></div>
+<p><code>--ensure GB</code> (<code>-E</code>) purges expired quarantine batches first, then removes configured entries largest first until the target is met. Its removals are permanent, and still logged.</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Exit</th><th scope="col">Meaning</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>OK</td></tr>
+<tr><td>1</td><td>Free space below warn (check modes)</td></tr>
+<tr><td>2</td><td>Below critical; <code>--ensure</code> missed its target; or every item was refused while executing</td></tr>
+<tr><td>3</td><td>Usage error or rejected config</td></tr>
+<tr><td>4</td><td>Busy: another oos mutation holds the lock; safe to retry</td></tr>
+<tr><td>5</td><td>Partial: some items done, others refused or failed</td></tr>
+<tr><td>6</td><td>I/O: audit log, quarantine, a record or a lock could not be written</td></tr>
+<tr><td>7</td><td>Nothing actionable</td></tr>
+</tbody></table></div>
+<p>Exit codes 4 to 7 are documented on the default branch and listed in the unreleased section of the changelog. Before that change, a busy lock and a partial cleanup also exited 2.</p>
+
+<h2 id="automation">Agent, daemon and fleet</h2>
+<ul>
+<li><code>oos --install-agent</code> installs an hourly quick check: a launchd agent on macOS or a systemd user timer on Linux (<code>--system</code> for root units on Linux). It notifies below the warn line or on a sudden drop. Remove it with <code>--uninstall-agent</code>.</li>
+<li><code>oos --install-daemon</code> installs the resident watcher, which replaces the hourly agent; <code>oos --status</code> asks it for the current state. It only watches unless <code>policy.daemon.auto_act</code> is true. Auto-act removals are permanent.</li>
+<li><code>oos --fleet</code> asks every ssh target in <code>policy.fleet</code> (or <code>--hosts web1,edge1</code>) for a quick check and prints one table, least free first.</li>
+<li><code>deploy/deploy.sh [--yes] web1 edge1</code> builds a static binary per host architecture, seeds a server config you write yourself, and installs the system timer. Without <code>--yes</code> it is a dry run that still probes each host read-only.</li>
+</ul>
+
+<h2 id="fit">How it fits with the other tools</h2>
+<p>oos runs on its own. <a href="/docs/badfarm.html">badfarm</a> has a read-only check, <code>health.oos-agent</code>, that reads the oos timer, service and journal on a Linux host and reports a missing or failing agent, a rejected config, a stale tick or a warn or critical disk. Hosts expected to run oos can be named in badfarm's <code>expected_oos_hosts</code> policy. A <a href="/docs/farmops.html">farmops</a> catalog entry can name badfarm check IDs such as this one in its prechecks; farmops scheduling itself is not implemented yet.</p>
+
+<h2 id="links">Links</h2>
+<ul>
+<li><a href="https://github.com/afterdarksys/oos#readme">Full README on GitHub</a> (every flag, policy key and guard)</li>
+<li><a href="https://github.com/afterdarksys/oos/blob/main/CHANGELOG.md">Changelog</a></li>
+<li><a href="https://github.com/afterdarksys/oos/blob/main/docs/FILESYSTEM-RELEASE-REVIEW.md">Filesystem release review</a></li>
+<li><a href="https://github.com/afterdarksys/oos/tags">Tagged versions</a> (v0.7.1; no packaged release downloads)</li>
+<li><a href="https://github.com/afterdarksys/oos/blob/main/LICENSE">MIT license</a></li>
+<li><a href="https://github.com/afterdarksys/oos/issues">Issue tracker</a></li>
+</ul>
+<p class="source-note">Built from the public <a href="https://github.com/afterdarksys/oos">oos repository</a> (README.md, CHANGELOG.md, the embedded default configs and the oos --help output) at commit 73b5056.</p>
+
+</article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>
