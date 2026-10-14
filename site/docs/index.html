@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Farm tool guides | OpenSAH / dev</title><meta name="description" content="Installation, usage and reference guides for vpscfgfarm, badfarm, goodfarm, farmops, oos and Out of Danger."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/"><meta property="og:type" content="website"><meta property="og:title" content="Farm tool guides | OpenSAH / dev"><meta property="og:description" content="Installation, usage and reference guides for vpscfgfarm, badfarm, goodfarm, farmops, oos and Out of Danger."><meta property="og:url" content="https://opensah.dev/docs/"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
 <body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
-<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Farm tool guides</p><h1>Farm tool guides.</h1><p>How to install and use the fleet and operations tools: what each one does, where its safety boundary is, and how they fit together.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Farm tool guides</strong><a href="/docs/" aria-current="page">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a></aside><article class="docs-content">
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Farm tool guides</p><h1>Farm tool guides.</h1><p>How to install and use the fleet and operations tools: what each one does, where its safety boundary is, and how they fit together.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Farm tool guides</strong><a href="/docs/" aria-current="page">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a><strong>Utility suite guides</strong><a href="/docs/missing-utils.html">Missing Utils</a><a href="/docs/rcdo.html">rcdo</a></aside><article class="docs-content">
 
 <h2 id="guides">Pick a tool.</h2>
 <p>Each guide covers requirements, installation, a first session, the main commands and configuration, and links to the full documentation in the tool's public repository.</p>
@@ -14,6 +14,13 @@
 <a class="docs-card" href="/docs/outofdanger.html"><span class="big-label">Command safety</span><h3>Out of Danger</h3><p>A fail-closed policy wrapper for commands such as <code>rm</code>.</p></a>
 </div>
 
+<h2 id="utility-suites">Utility suites.</h2>
+<p>Two larger toolkits that work on their own, on an engineer’s machine or in CI, rather than through the fleet gates.</p>
+<div class="docs-cards">
+<a class="docs-card" href="/docs/missing-utils.html"><span class="big-label">Unreleased</span><h3>Missing Utils</h3><p>48 JSON-native diagnostics, collectors and macOS research tools that report evidence and explicit gaps.</p></a>
+<a class="docs-card" href="/docs/rcdo.html"><span class="big-label">Accessible operations</span><h3>rcdo</h3><p>Policy-driven processing of noisy Terraform, Ansible and cloud output for screen readers and large print.</p></a>
+</div>
+
 <h2 id="fit">How they fit together.</h2>
 <div class="protocol"><span>badfarm discovers</span><span>→ goodfarm plans</span><span>→ vpscfgfarm executes</span><span>→ badfarm verifies</span></div>
 <ul>
@@ -22,6 +29,7 @@
 <li><strong>vpscfgfarm</strong> holds all of the authority. Its governor, deny floor, scopes and postures apply to every request, including goodfarm's.</li>
 <li><strong>farmops</strong> is planned to schedule routine work under standing grants that vpscfgfarm checks on every call. Only its catalog format, loader and journal exist today.</li>
 <li><strong>oos</strong> and <strong>Out of Danger</strong> work on their own, on one machine. badfarm reports on the oos hourly agent where it is installed.</li>
+<li><strong>Missing Utils</strong> collects and normalizes evidence; <strong>rcdo</strong> interprets it and makes it navigable. The two share a roadmap, and neither integrates with the farm tools.</li>
 </ul>
 
 <h2 id="status">Versions and licenses.</h2>
@@ -33,6 +41,8 @@
 <tr><td>farmops</td><td>Python 3.9+</td><td>None (0.0.1)</td><td>MIT</td></tr>
 <tr><td>oos</td><td>Go 1.24+</td><td>v0.7.1</td><td>MIT</td></tr>
 <tr><td>Out of Danger</td><td>Rust</td><td>v0.1.0</td><td>MIT</td></tr>
+<tr><td>Missing Utils</td><td>Go</td><td>None</td><td>MIT</td></tr>
+<tr><td>rcdo</td><td>Go</td><td>None (1.3.0-beta.1)</td><td>None yet</td></tr>
 </tbody></table></div>
 <p>None of these tools publishes packaged release downloads yet. Install from source as each guide shows. Development continues on each repository's default branch, so a guide can describe behaviour that is newer than the latest tag; the guides say so where it matters.</p>
 
