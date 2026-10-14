@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Missing Utils guide | OpenSAH / dev</title><meta name="description" content="Build and use Missing Utils, an unreleased suite of 48 small Go command-line tools for structured diagnostics, file and pipeline primitives, automation evidence and macOS inspection."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/missing-utils.html"><meta property="og:type" content="website"><meta property="og:title" content="Missing Utils guide | OpenSAH / dev"><meta property="og:description" content="Build and use Missing Utils, an unreleased suite of 48 small Go command-line tools for structured diagnostics, file and pipeline primitives, automation evidence and macOS inspection."><meta property="og:url" content="https://opensah.dev/docs/missing-utils.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Utility guides</p><h1>Missing Utils.</h1><p>A suite of small, single-purpose Go commands that collect evidence, emit versioned JSON, and say what they could not see.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a><strong>Utility suite guides</strong><a href="/docs/missing-utils.html" aria-current="page">Missing Utils</a><a href="/docs/rcdo.html">rcdo</a></aside><article class="docs-content">
+
+<span class="pill">Unreleased</span> <span class="pill">No tags</span> <span class="pill">MIT</span>
+<nav aria-label="On this page"><ul>
+<li><a href="#what">What it is</a></li>
+<li><a href="#requirements">Requirements</a></li>
+<li><a href="#install">Build and install</a></li>
+<li><a href="#quick-start">Quick start</a></li>
+<li><a href="#commands">The commands</a></li>
+<li><a href="#osx">The osx utility and the --apply rule</a></li>
+<li><a href="#accessible-operations">Accessible operations</a></li>
+<li><a href="#limits">Safety and limits</a></li>
+<li><a href="#fit">How it fits with the other tools</a></li>
+<li><a href="#links">Links</a></li>
+</ul></nav>
+
+<h2 id="what">What it is</h2>
+<p>Missing Utils is one Go module that builds 48 separate command-line tools. Each command makes one narrow promise: walk a tree, hash a file set, explain who owns a listening port, normalize a Terraform plan, read a TLS peer certificate. Commands meant for automation print versioned JSON or JSON Lines, where each record names its schema (for example <code>missing-utils/jwalk/v1</code>), so they compose in shell pipelines and CI jobs without parsing human text. The README describes the shared contract they work toward: data on stdout, diagnostics on stderr, stable exit codes and explicit <code>true</code>, <code>false</code> and <code>unknown</code> conclusions.</p>
+<p>The project rests on two ideas from its README: make routine operational work fast, safe and JSON-native, and explain <em>why</em> a system behaves as it does, with evidence and explicit uncertainty. The diagnostic commands report partial visibility instead of guessing. A result can be <code>partial</code>, and a missing collector is named in the output.</p>
+<div class="notice"><p><strong>Unreleased.</strong> The README states that the commands are implemented at bounded scopes and remain unreleased, and that building successfully does not establish production readiness. There are no tags and no GitHub releases. Command names are provisional and may change before a first release.</p></div>
+
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li>Go 1.24 or later to build (from <code>go.mod</code>). The project pins Go 1.24.6 in <code>.tool-versions</code> for asdf users, and CI uses Go 1.24.x.</li>
+<li>Linux is the primary runtime platform for the diagnostic collectors. Many of them read <code>/proc</code>, systemd, SELinux or Docker and return partial evidence elsewhere.</li>
+<li>The macOS security suite and <code>osx</code> target macOS. <code>osx</code> reports a runtime error on other systems.</li>
+<li>CI builds every command for Linux amd64, macOS arm64 and Windows amd64. A successful build on a platform does not mean every collector works there.</li>
+<li>Python 3 only for the repository's helper scripts (the capability generator and the demonstrations). The commands themselves are Go binaries.</li>
+</ul>
+
+<h2 id="install">Build and install</h2>
+<p>Build every command from a clone. Both the Makefile and <code>build.sh</code> put one binary per <code>cmd/</code> directory under <code>dist/</code>:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>git clone https://github.com/afterdarksys/ads-missing-utils.git
+cd ads-missing-utils
+make build            # or: ./build.sh build
+make test             # unit and integration tests
+make check            # go vet plus the tests</code></pre></div>
+<p>Build a single command with its Make target, for example <code>make dist/jsonprobe</code>. <code>./build.sh list</code> prints every command that <code>build</code> and <code>install</code> operate on, and <code>./build.sh check</code> also verifies gofmt.</p>
+<h3 id="install-binaries">Install the binaries and man pages</h3>
+<p><code>build.sh</code> installs every binary into <code>prefix/bin</code>. The default prefix is <code>/usr/local</code>; install under your home directory instead:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>./build.sh install prefix="$HOME/.local"
+./build.sh man-install prefix="$HOME/.local"</code></pre></div>
+<p>Every command has a roff man page in <code>man/</code>. <code>make man-build</code> or <code>./build.sh man-build</code> writes gzip-compressed pages to <code>dist/man</code>, and <code>man-install</code> copies them to <code>PREFIX/share/man/man1</code>. The Makefile reads the prefix from <code>PREFIX=</code>; <code>build.sh</code> takes <code>prefix=</code>.</p>
+<h3 id="install-go">Install one command with go install</h3>
+<p>The module path is <code>github.com/afterdarksys/ads-missing-utils</code>, so a single command can be installed directly:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>go install github.com/afterdarksys/ads-missing-utils/cmd/jwalk@latest</code></pre></div>
+<p>With no tags, <code>@latest</code> resolves to the newest commit on the default branch, and commands that support <code>--version</code> print the development version <code>0.1.0-dev</code>.</p>
+<h3 id="install-contrib">Companion tools</h3>
+<p><code>contrib/</code> links two separate security utilities as Git submodules: <a href="https://github.com/afterdarksys/ads-codedetective">ads-codedetective</a> and <a href="https://github.com/afterdarksys/vibedetector">vibedetector</a>. They keep their own releases and issue trackers. Fetch them with <code>git clone --recurse-submodules</code> or, in an existing checkout, <code>make contrib</code>.</p>
+
+<h2 id="quick-start">Quick start</h2>
+<p>These examples are read-only. They come from the README and the commands' help text, and assume you built into <code>dist/</code>.</p>
+<p>Walk a tree and emit one JSON record per file, then build and verify a manifest without parsing file names in the shell:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>./dist/jwalk ./release --type file --format ndjson
+./dist/jwalk ./release --type file \
+  | ./dist/hashsum create --from-jwalk --root ./release --output release.hashes.json
+./dist/hashsum verify --root ./release release.hashes.json</code></pre></div>
+<p>Inspect structure and evidence:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>./dist/binparse ./dist/logic                 # ELF, Mach-O or PE structure; never executes the input
+./dist/certwhy --address example.com:443     # live TLS peer certificate and validation result
+./dist/netwhy --host example.com             # DNS, default route and proxy evidence
+./dist/portwhy --port 22                     # Linux listener ownership, with partial visibility reported</code></pre></div>
+<p>Read a man page through the Logic Manual tools:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>./dist/man2logic man/logic.1 --output logic.logic
+./dist/logic logic.logic</code></pre></div>
+<p>Most commands print their flags with <code>--help</code> and accept <code>--version</code>; <code>driftwhy</code>, <code>expose</code>, <code>patchwhy</code>, <code>regocheck</code>, <code>sandboxdiff</code>, <code>servicewhy</code> and <code>spacelift-helper</code> do not define <code>--version</code>. The README also shows a gate for Terraform plans; validate the gate policy against your own requirements before you rely on it:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>terraform show -json tfplan \
+  | tfchanges --format ndjson \
+  | jsongate --policy deployment-gate.yaml</code></pre></div>
+
+<h2 id="commands">The commands</h2>
+<p>The authoritative inventory is <code>docs/commands.json</code>, and CI checks that it covers every <code>cmd/</code> directory. It lists 48 commands, all marked <code>implemented-unreleased</code>. The tables below reproduce its scope and boundary text, grouped by purpose. For 17 commands the inventory gives no specific boundary and points to the command's help; read that help before relying on one of them.</p>
+<h3 id="cmd-why">Diagnostics: the “why” commands (14)</h3>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Command</th><th scope="col">Scope</th><th scope="col">Boundary</th></tr></thead>
+<tbody>
+<tr><td><code>accesswhy</code></td><td>Report path mode and local identity evidence, with explicit access-control gaps.</td><td>Mode and local identity evidence; ACL and policy evaluation are incomplete.</td></tr>
+<tr><td><code>authwhy</code></td><td>Report local account and group evidence, with explicit authentication-policy gaps.</td><td>Local account evidence; authentication policy is not evaluated.</td></tr>
+<tr><td><code>binarywhy</code></td><td>Report executable metadata and a SHA-256 integrity observation.</td><td>Metadata and hash observation; no trust or malware verdict.</td></tr>
+<tr><td><code>certwhy</code></td><td>Inspect a live TLS peer certificate, negotiated connection, and validation result.</td><td>Live TLS connection; failed verification stays failed.</td></tr>
+<tr><td><code>driftwhy</code></td><td>Capture a current file-content fingerprint for later drift comparison.</td><td>Current fingerprint only; needs prior evidence to establish drift.</td></tr>
+<tr><td><code>eventwhy</code></td><td>Group bounded Docker event evidence by resource, action, and exit code.</td><td>Historical evidence only; limited Docker retention is reported as incomplete. No root-cause inference.</td></tr>
+<tr><td><code>netwhy</code></td><td>Collect DNS, default-route, and redacted proxy evidence for a destination.</td><td>DNS, route and proxy evidence; no reachability or firewall conclusion.</td></tr>
+<tr><td><code>patchwhy</code></td><td>Capture a current binary/library identity for restart analysis.</td><td>Current fingerprint only; no process mapping or restart recommendation.</td></tr>
+<tr><td><code>pcapwhy</code></td><td>Turn offline PCAP/PCAPNG captures into bounded flow, VLAN, ICMP, and reset evidence.</td><td>Offline, bounded capture analysis; no live capture.</td></tr>
+<tr><td><code>portwhy</code></td><td>Explain visible Linux listener ownership and report partial visibility.</td><td>Linux; reports partial process visibility.</td></tr>
+<tr><td><code>restartwhy</code></td><td>Find visible processes still mapping deleted files after updates.</td><td>Linux visible deleted mappings only; no automatic restart.</td></tr>
+<tr><td><code>selinuxwhy</code></td><td>Summarize SELinux enforcement state and bounded AVC denial evidence.</td><td>Linux enforcement and AVC evidence; no policy changes.</td></tr>
+<tr><td><code>servicewhy</code></td><td>Collect passive process-health evidence for a service PID.</td><td>Linux process evidence; no service dependency or restart analysis.</td></tr>
+<tr><td><code>unitwhy</code></td><td>Explain systemd unit state, selected hardening controls, and bounded journal evidence.</td><td>Linux systemd and bounded journal evidence; no mutation.</td></tr>
+</tbody></table></div>
+<h3 id="cmd-host">Linux runtime and host evidence (4)</h3>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Command</th><th scope="col">Scope</th><th scope="col">Boundary</th></tr></thead>
+<tbody>
+<tr><td><code>expose</code></td><td>Report local listener exposure, with explicit firewall/reachability gaps.</td><td>Linux listeners; firewall and remote reachability are not evaluated.</td></tr>
+<tr><td><code>incidentsnap</code></td><td>Capture a bounded read-only host and boot-context snapshot.</td><td>Host and boot context only; not a forensic acquisition.</td></tr>
+<tr><td><code>ports</code></td><td>Produce a Linux TCP/UDP listener map with best-effort process ownership.</td><td>Linux listener inventory; process ownership is best effort.</td></tr>
+<tr><td><code>pwatch</code></td><td>Passively sample Linux process state, RSS, and thread count.</td><td>Linux process sampling only.</td></tr>
+</tbody></table></div>
+<h3 id="cmd-macos">macOS security research suite (11)</h3>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Command</th><th scope="col">Scope</th><th scope="col">Boundary</th></tr></thead>
+<tbody>
+<tr><td><code>aaas</code></td><td>Audit and explicitly revoke macOS Accessibility TCC grants.</td><td>macOS TCC audit; revocation requires explicit apply.</td></tr>
+<tr><td><code>amtm</code></td><td>Map AppleScript automation text into a static permission graph without execution.</td><td>Static AppleScript text analysis; no script execution.</td></tr>
+<tr><td><code>bundleinfo</code></td><td>Inventory <code>.app</code> and <code>.pkg</code> structure and metadata without executing bundle contents.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+<tr><td><code>cded</code></td><td>Detect sensitive clipboard patterns and explicitly drain unauthorized content.</td><td>macOS clipboard inspection; draining requires explicit apply.</td></tr>
+<tr><td><code>clt</code></td><td>Correlate hidden executables with identical content and optionally quarantine them.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+<tr><td><code>dtp</code></td><td>Compare daemon executable trees with an HMAC-authenticated baseline.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+<tr><td><code>homestate</code></td><td>Index a home or mapped directory, report changes and moves, and safely repair or restore problematic names.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+<tr><td><code>metascore</code></td><td>Score file metadata and extended-attribute-name changes against a saved baseline.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+<tr><td><code>pll</code></td><td>Lint XML property lists and flag malformed or risky launchd logic.</td><td>XML property lists only; not a launchd runtime validator.</td></tr>
+<tr><td><code>tjt</code></td><td>Sample and report transient processes and deleted executable paths.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+<tr><td><code>webkit-tool</code></td><td>Statically flag risky WebKit settings and native script bridges.</td><td>Static heuristics; no exploitability verdict.</td></tr>
+</tbody></table></div>
+<h3 id="cmd-osx-row">macOS subsystem utility (1)</h3>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Command</th><th scope="col">Scope</th><th scope="col">Boundary</th></tr></thead>
+<tbody>
+<tr><td><code>osx</code></td><td>Inspect and manage macOS subsystems through structured commands.</td><td>macOS; state changes require <code>--apply</code>.</td></tr>
+</tbody></table></div>
+<h3 id="cmd-binary">Binary inspection and manuals (4)</h3>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Command</th><th scope="col">Scope</th><th scope="col">Boundary</th></tr></thead>
+<tbody>
+<tr><td><code>binparse</code></td><td>Read ELF, Mach-O, and PE structure safely using Go debug readers.</td><td>ELF, Mach-O and PE structure; does not execute input.</td></tr>
+<tr><td><code>info2logic</code></td><td>Convert GNU Info source into Logic Manual v1.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+<tr><td><code>logic</code></td><td>Read Logic Manual v1, roff man-page, and GNU Info source files.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+<tr><td><code>man2logic</code></td><td>Convert roff man source into Logic Manual v1.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+</tbody></table></div>
+<h3 id="cmd-files">File and pipeline primitives (5)</h3>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Command</th><th scope="col">Scope</th><th scope="col">Boundary</th></tr></thead>
+<tbody>
+<tr><td><code>envsub</code></td><td>Render environment-backed templates with strict types, defaults, validation, and secret-aware diagnostics.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+<tr><td><code>hashsum</code></td><td>Compute SHA-256 and BLAKE3 concurrently and create verifiable manifests for large file sets.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+<tr><td><code>jsondiff</code></td><td>Compare structured desired and observed state with JSON Pointer paths and machine-readable changes.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+<tr><td><code>jwalk</code></td><td>Walk large directory trees with regex, age, size, and type filters, emitting JSON Lines.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+<tr><td><code>varmerge</code></td><td>Merge environment, JSON, YAML, and defaults under a typed schema with value provenance.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+</tbody></table></div>
+<h3 id="cmd-automation">Automation, IaC and accessible operations (8)</h3>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Command</th><th scope="col">Scope</th><th scope="col">Boundary</th></tr></thead>
+<tbody>
+<tr><td><code>contextsnap</code></td><td>Collect or normalize AWS and AliCloud caller identity with explicit profile and region.</td><td>Read-only STS identity; selected region is not proof of resource location. Saved inputs retain a supplied timestamp.</td></tr>
+<tr><td><code>jsongate</code></td><td>Convert JSON findings into consistent pass, deny, or approval-required decisions.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+<tr><td><code>jsonprobe</code></td><td>Run declarative TCP, HTTP, process, and filesystem readiness checks.</td><td>TCP, HTTP and file checks; process checks require Linux. No root-cause verdict.</td></tr>
+<tr><td><code>regocheck</code></td><td>Detect a local OPA engine and report policy-evaluation readiness.</td><td>Detects OPA readiness only; does not evaluate policies.</td></tr>
+<tr><td><code>runreceipt</code></td><td>Preview or explicitly execute local commands and pipelines with private per-stage execution receipts.</td><td>Local process evidence only; no automatic retry or remote outcome verification.</td></tr>
+<tr><td><code>sandboxdiff</code></td><td>Compare two JSON workload snapshots.</td><td>JSON comparison only; does not launch or observe a sandbox.</td></tr>
+<tr><td><code>spacelift-helper</code></td><td>Normalize allowlisted Spacelift hook context.</td><td>Allowlisted environment context only; no hook execution or retention.</td></tr>
+<tr><td><code>tfchanges</code></td><td>Normalize Terraform/OpenTofu plan JSON into concise resource-change records and evidence-based risk facts.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+</tbody></table></div>
+<h3 id="cmd-other">Other (1)</h3>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Command</th><th scope="col">Scope</th><th scope="col">Boundary</th></tr></thead>
+<tbody>
+<tr><td><code>meow</code></td><td>Whimsical cat sound text transformer with translation, prefix, emphasis, and pitch controls.</td><td>See command help for supported inputs and platform constraints.</td></tr>
+</tbody></table></div>
+
+<h2 id="osx">The osx utility and the --apply rule</h2>
+<p><code>osx</code> gives structured, Go-native access to macOS subsystems. It takes the form <code>osx [--apply] [--duration DURATION] &lt;subsystem&gt; &lt;action&gt; [arguments]</code> and prints a versioned JSON response that names the native program and arguments it ran, and whether anything changed.</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Kind</th><th scope="col">Actions</th></tr></thead>
+<tbody>
+<tr><td>Read-only</td><td><code>info show</code>; <code>battery status</code>; <code>power settings</code>; <code>network quality|interfaces</code>; <code>spotlight search QUERY</code>; <code>dns status</code>; <code>security filevault|gatekeeper|firewall|sip</code>; <code>updates list</code>; <code>defaults read</code>; <code>clipboard read</code>; <code>volume get</code></td></tr>
+<tr><td>Requires <code>--apply</code></td><td><code>caffeinate start</code>; <code>launch open</code>; <code>dns flush</code>; <code>updates install</code>; <code>defaults write|delete</code>; <code>speech say</code>; <code>clipboard write</code>; <code>files copy</code>; <code>automation run</code>; <code>volume set|mute|unmute</code></td></tr>
+</tbody></table></div>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>osx security gatekeeper
+osx defaults read com.apple.finder AppleShowAllFiles
+osx defaults write com.apple.finder AppleShowAllFiles bool true --apply
+osx caffeinate start --duration 45m --apply</code></pre></div>
+<p>A state-changing action without <code>--apply</code> is refused with a message such as <code>osx dns flush changes system state; rerun with --apply</code>, and nothing runs. According to its specification, <code>osx</code> never passes input through a shell, never escalates privileges and never makes an implicit remote request.</p>
+<p>The same rule, that a change needs an explicit flag, holds across the suite, but the flag differs by command. Check each command's help:</p>
+<ul>
+<li><code>clt</code> moves candidates into quarantine only with <code>--apply</code> and <code>--quarantine-dir</code>.</li>
+<li><code>aaas</code> resets an Accessibility grant only with <code>--revoke BUNDLE_ID --apply</code>.</li>
+<li><code>cded</code> clears sensitive clipboard content only with <code>--drain</code>. File input is always read-only.</li>
+<li><code>homestate</code> renames files only with <code>--fix-names</code> and keeps reversible mappings for <code>--restore-names</code>.</li>
+<li><code>runreceipt</code> previews by default and runs commands only with <code>--execute</code>, which requires a new <code>--receipt</code> file.</li>
+</ul>
+
+<h2 id="accessible-operations">Accessible operations</h2>
+<p>A shared roadmap with <a href="/docs/rcdo.html">RCDO</a> aims to make Linux, cloud, IaC and automation work independently navigable and verifiable by blind and low-vision engineers. Missing Utils provides the bounded collection and normalization; RCDO provides nonvisual navigation, review state and handoffs.</p>
+<p>The project status file records what exists locally today:</p>
+<ul>
+<li><code>contextsnap</code> collects AWS or AliCloud caller identity through read-only CLI calls with an explicit profile and region, or normalizes dated input you supply.</li>
+<li><code>eventwhy</code> groups finite Docker event evidence by resource, action and exit code.</li>
+<li><code>runreceipt</code> records per-stage execution receipts, so an early failed pipeline stage cannot be hidden by a successful last stage.</li>
+</ul>
+<p>A credential-free demonstration runs both toolkits against synthetic fixtures. It contacts no cloud, Docker daemon or AI provider and never applies infrastructure. It needs a sibling RCDO checkout:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>make dist/contextsnap dist/eventwhy
+make -C ../rcdo build
+python3 scripts/demo-accessible-operations.py</code></pre></div>
+<p>Workplace acceptance is pending. The status file says no live employer credentials, Docker daemon, Spacelift account or Ansible inventory was used, and that screen-reader, braille-display and magnification usability has not been measured. Relationship graphs, deeper IaC semantics, Ansible and Spacelift integration, continuous event streams and fleet comparison are planned work, not current capabilities. <code>docs/COMMANDS.txt</code> is a linear, 72-column version of the command inventory for speech and magnification.</p>
+
+<h2 id="limits">Safety and limits</h2>
+<ul>
+<li>Read-only by default. Quarantine, clipboard draining, grant revocation, name repair, command execution and every <code>osx</code> state change require an explicit flag.</li>
+<li>No trust or malware verdicts. <code>binarywhy</code> reports metadata and a hash, <code>webkit-tool</code> and <code>amtm</code> are static heuristics, and the macOS suite does not represent static evidence as proof of malicious behavior.</li>
+<li>No root-cause or remediation inference. <code>eventwhy</code> does not label exit 137 as out-of-memory, <code>restartwhy</code> does not restart anything, and <code>driftwhy</code> and <code>patchwhy</code> capture a current fingerprint only.</li>
+<li>Partial evidence is normal. Platform-specific collectors return partial results when they lack visibility or privileges, even when the binary builds.</li>
+<li>Process exit is not a verified outcome. A clean <code>runreceipt</code> or <code>jsonprobe</code> result does not establish deployment success.</li>
+<li>Unreleased. There are no tags or published binaries, command names are provisional, and the README notes that contribution guidelines, a code of conduct and a security policy are still to be added.</li>
+</ul>
+
+<h2 id="fit">How it fits with the other tools</h2>
+<p>Missing Utils collects observations; <a href="/docs/rcdo.html">RCDO</a> reads them. The repository's RCDO readiness workflow feeds the aggregate output of <code>jsonprobe</code> into RCDO's <code>jsonprobe-check</code>, which returns an accessible review with coverage and freshness checks. That workflow is local and advisory: it does not execute deployments or certify that they are safe. Both projects carry the same accessibility roadmap, and the copy in Missing Utils is the authoritative one.</p>
+<p>Missing Utils has no integration with the farm tools. It does not read or write the state of <a href="/docs/badfarm.html">badfarm</a>, <a href="/docs/oos.html">oos</a> or the others; it runs as standalone binaries on the machine you are inspecting.</p>
+
+<h2 id="links">Links</h2>
+<ul>
+<li><a href="https://github.com/afterdarksys/ads-missing-utils#readme">Full README on GitHub</a></li>
+<li><a href="https://github.com/afterdarksys/ads-missing-utils/blob/main/docs/commands.json">Command inventory (commands.json)</a></li>
+<li><a href="https://github.com/afterdarksys/ads-missing-utils/blob/main/docs/COMMANDS.txt">Linear command inventory for speech and magnification (COMMANDS.txt)</a></li>
+<li><a href="https://github.com/afterdarksys/ads-missing-utils/blob/main/ROADMAP.md">Accessible engineering roadmap</a></li>
+<li><a href="https://github.com/afterdarksys/ads-missing-utils/tree/main/specs">Specifications</a>, including <a href="https://github.com/afterdarksys/ads-missing-utils/blob/main/specs/OSX.md">osx</a> and the <a href="https://github.com/afterdarksys/ads-missing-utils/blob/main/specs/MACOS_SECURITY_SUITE.md">macOS security suite</a></li>
+<li><a href="https://github.com/afterdarksys/ads-missing-utils/blob/main/docs/RCDO_WORKFLOW.md">RCDO readiness workflow</a></li>
+<li><a href="https://github.com/afterdarksys/ads-missing-utils/blob/main/LICENSE">MIT license</a></li>
+<li><a href="https://github.com/afterdarksys/ads-missing-utils/issues">Issue tracker</a></li>
+</ul>
+<p class="source-note">Built from the public <a href="https://github.com/afterdarksys/ads-missing-utils">ads-missing-utils repository</a> (README.md, ROADMAP.md, docs/commands.json, docs/COMMANDS.txt, docs/RCDO_WORKFLOW.md, docs/accessible-operations/STATUS.md and DEMO.md, specs/OSX.md, specs/MACOS_SECURITY_SUITE.md, Makefile, build.sh, go.mod, .tool-versions, .github/workflows/ci.yml, LICENSE, and command help text) at commit aaeda8d.</p>
+
+</article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

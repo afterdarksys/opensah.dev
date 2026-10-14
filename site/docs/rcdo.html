@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>rcdo guide | OpenSAH / dev</title><meta name="description" content="Build and use rcdo, an accessible DevOps toolkit that turns Terraform, OpenTofu, Ansible and cloud CLI output into plain-text findings for screen readers, braille and large print."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/rcdo.html"><meta property="og:type" content="website"><meta property="og:title" content="rcdo guide | OpenSAH / dev"><meta property="og:description" content="Build and use rcdo, an accessible DevOps toolkit that turns Terraform, OpenTofu, Ansible and cloud CLI output into plain-text findings for screen readers, braille and large print."><meta property="og:url" content="https://opensah.dev/docs/rcdo.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Utility guides</p><h1>rcdo.</h1><p>An accessible DevOps toolkit that reads noisy Terraform, OpenTofu, Ansible and cloud CLI output and reports what matters as plain, labelled findings for screen readers, braille and large print.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a><strong>Utility suite guides</strong><a href="/docs/missing-utils.html">Missing Utils</a><a href="/docs/rcdo.html" aria-current="page">rcdo</a></aside><article class="docs-content">
+
+<span class="pill">Early development (beta 1.3.0-beta.1)</span> <span class="pill">No tags or releases</span> <span class="pill">No license file</span>
+<div class="notice"><p><strong>License.</strong> The repository has no license file and the README does not state a license. The source is publicly visible, but no license grants permission to copy, modify or redistribute it. Ask the maintainers before reusing the code.</p></div>
+<nav aria-label="On this page"><ul>
+<li><a href="#what">What it is</a></li>
+<li><a href="#requirements">Requirements</a></li>
+<li><a href="#install">Build and install</a></li>
+<li><a href="#quick-start">Quick start</a></li>
+<li><a href="#concepts">Core concepts</a></li>
+<li><a href="#commands">Commands</a></li>
+<li><a href="#integrations">Integrations</a></li>
+<li><a href="#limits">Limits</a></li>
+<li><a href="#fit">How it fits with the other tools</a></li>
+<li><a href="#links">Links</a></li>
+</ul></nav>
+
+<h2 id="what">What it is</h2>
+<p>rcdo is a command-line toolkit for reviewing infrastructure changes before they cause outages. It is designed by a visually impaired operator for blind and low-vision DevOps engineers who use screen readers, braille displays, magnification or large print. Tools such as Terraform, OpenTofu, Ansible, the AWS CLI and <code>gcloud</code> produce long, dense and often colour-coded output. rcdo reads that output, or the structured JSON behind it, and reports what matters first: severity, resource, action, environment and reason.</p>
+<p>It works on both sides of a change. Before a change, commands such as <code>prebuild</code>, <code>tofu-check</code> and <code>ansible-check</code> read a saved plan or playbook and say what would be created, changed or deleted. After a change, commands such as <code>receipt-review</code>, <code>ansible-watch</code> and <code>error-explain</code> read what actually ran and what failed. Findings pass through the same policy and reporting layer, so every command produces the same kind of result.</p>
+<p>The design follows a few rules stated in the README:</p>
+<ul>
+<li>Plain text is the primary interface. Colour is optional and never the only signal.</li>
+<li>Output has speech and 40-column braille layouts, adjustable line width and no reliance on visual tables.</li>
+<li>It is offline-first, low-dependency and works with ordinary files and pipes.</li>
+<li>It starts read-only and advisory. Any write needs an explicit flag and a preview.</li>
+<li>A partial review is reported as incomplete, never as clean.</li>
+</ul>
+<div class="notice"><p><strong>What it is not.</strong> The checks are conservative guardrails, not proof that a deployment is safe. The README describes the project as an early-stage, "work-ready beta core": each employer must validate its own credentials, schemas, policies and deployment adapters before production use.</p></div>
+
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li>Go 1.24 or later to build (<code>go.mod</code> declares <code>go 1.24.0</code>; <code>.tool-versions</code> pins <code>golang 1.24.6</code>).</li>
+<li><code>make</code>, for the documented build and install targets.</li>
+<li>The repository does not name supported operating systems. The Makefile installs with symlinks, which assumes a Unix-like system.</li>
+</ul>
+<p>Most commands read files you already have and need nothing else. Some commands call an external tool, and only those commands need it:</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">External tool</th><th scope="col">Used by</th></tr></thead>
+<tbody>
+<tr><td><code>tofu</code> or <code>terraform</code></td><td><code>tofu-check --plan</code> (converts a saved plan with <code>show -json</code>) and <code>iac-validate --native</code></td></tr>
+<tr><td>Ansible</td><td>The optional callback plugin that records events for <code>ansible-watch</code>; <code>ansible-inventory --list</code> output for <code>ansible-scope</code>. rcdo never launches Ansible itself.</td></tr>
+<tr><td>AWS CLI, <code>gcloud</code>, <code>az</code></td><td>Opt-in live identity and inventory collection (<code>cloud-context-check --collect</code>, <code>collect</code>, <code>context-acquire --native</code>)</td></tr>
+<tr><td><code>spacectl</code></td><td>Live run lookup in <code>spacelift-check</code> and <code>spacelift-watch</code></td></tr>
+<tr><td>GitHub CLI (<code>gh</code>)</td><td><code>pr-manager</code> collection and <code>--execute</code></td></tr>
+<tr><td>OPA 1.x (<code>opa</code>)</td><td><code>rego-check</code>, <code>rego-test</code>, <code>rego-diff</code></td></tr>
+<tr><td>Pandoc, Poppler <code>pdftotext</code></td><td><code>to-markdown</code> for DOCX and PDF input</td></tr>
+<tr><td><code>imgsee</code>, <code>pdfsee</code> (from <code>shell2see/</code>)</td><td><code>see</code>, which reads image metadata and bounded PDF text</td></tr>
+<tr><td>Python 3</td><td>The practice scripts in <code>scripts/</code>, the Ansible callback and the workflow integration scripts</td></tr>
+</tbody></table></div>
+<p>Run <code>rcdo doctor --sample</code> after building to see which of these it finds on your system.</p>
+
+<h2 id="install">Build and install</h2>
+<p>There is no packaged release, so build from a clone. The Go module path is <code>git-tools</code>, not a fetchable repository path, so <code>go install</code> from GitHub does not work.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>git clone https://github.com/afterdarksys/rcdo.git
+cd rcdo
+make verify
+make build
+./dist/rcdo --version</code></pre></div>
+<p><code>make verify</code> runs <code>go test ./...</code> and <code>go vet ./...</code>. <code>make build</code> creates <code>dist/rcdo</code> and a symlink in <code>dist/</code> for each command name, so <code>./dist/rcdo tofu-check</code> and <code>./dist/tofu-check</code> are the same. The version line is <code>rcdo 1.3.0-beta.1</code>.</p>
+<p>Install for one user without administrator access, then make sure <code>$HOME/.local/bin</code> is on <code>PATH</code>:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>make install PREFIX="$HOME/.local"</code></pre></div>
+<p>Without <code>PREFIX</code>, <code>make install</code> installs to <code>/usr/local/bin</code>. The install target also creates every command-name symlink next to <code>rcdo</code>. New scripts should call <code>rcdo COMMAND [options]</code>; <code>git-tools</code> and <code>git-diff-walker</code> remain only as compatibility names.</p>
+<p>Optional user defaults live in a configuration file:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>rcdo config init
+rcdo config path</code></pre></div>
+
+<h2 id="quick-start">Quick start</h2>
+<h3 id="quick-offline">Try it without credentials</h3>
+<p>The beta demo uses only the files in <code>examples/</code>. It does not call AWS, Terraform, OpenTofu, Ansible or an AI provider.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>./dist/hcl2aws --input examples/decompose-aws.tf
+./dist/hcl2aws --input examples/decompose-aws.tf --step 1
+rcdo config-explain --input examples/policy.json
+rcdo doctor --sample</code></pre></div>
+<p><code>hcl2aws</code> prints a dependency-ordered manual runbook with <code>Execution: NOT RUN</code> in its header. The example contains a placeholder AMI, so the result is <code>INCOMPLETE</code> rather than falsely ready. <code>config-explain</code> reads the JSON one labelled path at a time.</p>
+<h3 id="quick-change">Review a change before applying it</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>tofu plan -out=review.tfplan
+rcdo tofu-check --plan review.tfplan --environment production --format json &gt; tofu-review.json
+rcdo review-brief --input tofu-review.json --width 40
+git diff | rcdo diff-walk --summary-only</code></pre></div>
+<p><code>tofu-check</code> flags deletes, replacements, stateful resources, IAM and policy updates, and common public-access indicators. <code>review-brief</code> reduces a report to result, severity, title, target and next action at the width you choose. <code>diff-walk</code> reads a unified diff one change at a time without running Git.</p>
+<h3 id="quick-prebuild">See what a plan and a playbook would do</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>terraform show -json review.tfplan &gt; plan.json
+rcdo prebuild --plan plan.json --playbook site.yml --color=never</code></pre></div>
+<p><code>prebuild</code> lists the create, update, delete and replace lines from a saved Terraform or OpenTofu plan and the tasks from the playbook. Nothing is applied. With <code>--color=auto</code> it colours a terminal only; the class label such as <code>[vm]</code> is always in the text.</p>
+<h3 id="quick-shift">Start of a shift</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>rcdo context --input snapshot.json --expect work.yaml --format json &gt; context.json
+rcdo tofu-check --input plan.json --format json &gt; plan.json.report
+rcdo shift --report context.json --report plan.json.report --layout speech --change-id CHG-42
+rcdo shift --report context.json --report plan.json.report --format ticket --change-id CHG-42</code></pre></div>
+<p><code>shift</code> reads reports you already have and says who they claim you are, the single highest-severity blocker, the first thing that was not proven, and one next command. Layouts are <code>plain</code>, <code>speech</code> and <code>braille</code> (40 columns by default). <code>--format ticket</code> writes a paragraph for a change ticket; it is not approval to deploy.</p>
+
+<h2 id="concepts">Core concepts</h2>
+<h3 id="findings">Findings and status</h3>
+<p>Every checker uses one output contract, defined in the <code>finding/</code> package and <code>specs/finding-format.md</code>. A finding has a stable ID, severity, resource, action, environment, evidence, confidence and remediation. A report has one overall status, and review commands exit with a matching code:</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Status</th><th scope="col">Exit code</th><th scope="col">Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>CLEAN</code></td><td><code>0</code></td><td>No findings, or a successful operation</td></tr>
+<tr><td><code>REVIEW</code></td><td><code>10</code></td><td>Findings need review</td></tr>
+<tr><td><code>BLOCKED</code></td><td><code>20</code></td><td>High or critical findings block the change</td></tr>
+<tr><td><code>INCOMPLETE</code></td><td><code>30</code></td><td>Evidence is missing, stale or invalid</td></tr>
+<tr><td>(error)</td><td><code>2</code></td><td>Invalid arguments or input</td></tr>
+</tbody></table></div>
+<p>Review commands accept <code>--format text</code>, <code>json</code>, <code>github</code> (Actions annotations) and <code>sarif</code> (SARIF 2.1.0), and <code>--width</code> with a minimum of 40. Invalid findings are returned as errors rather than shown as a completed review.</p>
+<h3 id="policy">The policy layer</h3>
+<p>Findings can be shaped by several kinds of policy, all optional:</p>
+<ul>
+<li><strong>Suppressions</strong>: <code>--policy FILE</code> takes a JSON file of suppressions, each with an owner, a reason and an expiry date. See <code>examples/policy.json</code>.</li>
+<li><strong>Repository policy</strong>: <code>.rcdo/policy.yaml</code> assigns owners and severities to critical paths, requires companion changes such as runbooks, and rejects repository-specific content. See <code>examples/repository-policy.yaml</code>; it is checked by <code>repo-policy-check</code> and <code>review</code>.</li>
+<li><strong>Operational pack</strong>: <code>ops-policy-check</code> has built-in rules for public CIDRs, wildcard permissions, disabled encryption or deletion protection, and privileged workloads.</li>
+<li><strong>Rego</strong>: <code>rego-check</code>, <code>rego-test</code>, <code>rego-diff</code> and <code>policy-review</code> run your own Rego policies through a local OPA. Starter policies are in <code>examples/rego/</code>.</li>
+<li><strong>Plugins</strong>: executables in any language, registered in configuration and returning the standard report. Plugin support is off until you enable it globally and per plugin.</li>
+</ul>
+<h3 id="coverage">Required coverage</h3>
+<p><code>deploy-review</code> and <code>review-change</code> combine named reports from the pull request, Actions, OpenTofu, Spacelift, Ansible, cloud context and other sources. You declare which components are required. A missing or invalid required report makes the combined review <code>INCOMPLETE</code>.</p>
+<h3 id="navigation">Reading and resuming</h3>
+<p><code>review-session</code> saves a report and walks it in severity order with <code>next</code>, <code>status</code>, bookmarks, notes and <code>acknowledge</code>. Acknowledging records that a finding was read; it does not clear a blocker. Report and artifact fingerprints are rechecked on resume, and a changed source makes the session stale (exit 30). Similar persistent navigation exists for configuration (<code>config-walk</code>), state (<code>state-walk</code>), Markdown (<code>markdown-view</code>), runbooks and incidents. <code>handoff</code> writes a summary that keeps unresolved blockers.</p>
+<h3 id="guarded-writes">Guarded edits</h3>
+<p><code>config-set</code> and <code>config-remove</code> edit JSON, YAML, TOML and HCL by complete path. By default they print a redacted preview. They write only with <code>--write --expect-sha256 HASH</code>, using the hash from the preview, so a file that changed after you reviewed it is not overwritten.</p>
+<h3 id="diffwalk">diffwalk</h3>
+<p>The <code>diffwalk/</code> package backs <code>rcdo diff-walk</code>. It reads a unified diff from standard input or <code>--input</code>, and supports a summary, one-based file and hunk selection, case-insensitive search and JSON output. It never runs Git or changes a repository. Optional colour and persistent reviewed-item tracking are planned.</p>
+<h3 id="shell2see">shell2see</h3>
+<p><code>shell2see/</code> is a small, separate set of utilities with its own Makefile: <code>textsee</code> (Go word frequencies), <code>imgsee</code> (Python and Pillow image metadata and ASCII previews), <code>pdfsee</code> (PDF metadata, text and embedded images through Poppler) and <code>pdfgrep</code> (Bash search across PDFs). <code>rcdo see</code> calls <code>imgsee</code> and <code>pdfsee</code>. It does not describe what a picture shows, and it does not perform OCR.</p>
+
+<h2 id="commands">Commands</h2>
+<p>The repository has three programs under <code>cmd/</code>:</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Program</th><th scope="col">Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>cmd/rcdo</code></td><td>The main binary. It dispatches on its first argument, or on the name it was invoked as, so each symlink runs one command.</td></tr>
+<tr><td><code>cmd/git-tools</code></td><td>Compatibility name for the same command suite.</td></tr>
+<tr><td><code>cmd/git-diff-walker</code></td><td>Compatibility name for <code>diff-walk</code>.</td></tr>
+</tbody></table></div>
+<p><code>rcdo help</code> lists 85 commands. They are grouped here by area. Run <code>rcdo COMMAND --help</code> for each command's options, printed one labelled option at a time.</p>
+<div class="table-scroll"><table class="status-table">
+<thead><tr><th scope="col">Area</th><th scope="col">Commands</th></tr></thead>
+<tbody>
+<tr><td>Shift brief and reading</td><td><code>shift</code>, <code>report-read</code>, <code>review-brief</code>, <code>review-session</code>, <code>handoff</code>, <code>markdown-view</code>, <code>to-markdown</code>, <code>see</code>, <code>log-read</code></td></tr>
+<tr><td>Terraform and OpenTofu</td><td><code>prebuild</code>, <code>tofu-check</code>, <code>plan-explain</code>, <code>plan-diff</code>, <code>iac-validate</code>, <code>iac-config-check</code>, <code>iac-context</code>, <code>state-walk</code>, <code>command-gen</code></td></tr>
+<tr><td>Decomposition into manual runbooks</td><td><code>decompose</code>, <code>hcl2aws</code>, <code>hcl2ali</code>, <code>ansible2aws</code>, <code>ansible2ali</code></td></tr>
+<tr><td>Ansible and Terraform-to-Ansible workflows</td><td><code>ansible-check</code>, <code>ansible-scope</code>, <code>ansible-watch</code>, <code>workflow-check</code>, <code>workflow-trace</code>, <code>workflow-collect</code></td></tr>
+<tr><td>Spacelift</td><td><code>spacelift-check</code>, <code>spacelift-runs</code>, <code>spacelift-diff</code>, <code>spacelift-watch</code></td></tr>
+<tr><td>Cloud identity and inventory</td><td><code>context</code>, <code>context-acquire</code>, <code>context-summary</code>, <code>cloud-context-check</code>, <code>collect</code>, <code>changes</code>, <code>resource-walk</code>, <code>fleet-check</code>, <code>kube-explain</code>, <code>network-check</code></td></tr>
+<tr><td>Permissions and service comparison</td><td><code>permission-check</code>, <code>permission-diff</code>, <code>service-map</code>, <code>service-compare</code>, <code>service-export</code></td></tr>
+<tr><td>Git, pull requests and GitHub Actions</td><td><code>review</code> (also <code>git-review</code>), <code>diff-walk</code>, <code>git-danger-check</code>, <code>git-isimportant-check</code>, <code>git-update-json</code>, <code>gha-tool</code>, <code>pr-manager</code>, <code>repo-policy-check</code></td></tr>
+<tr><td>Policy and combined review</td><td><code>ops-policy-check</code>, <code>rego-check</code>, <code>rego-test</code>, <code>rego-diff</code>, <code>policy-review</code>, <code>deploy-review</code>, <code>review-change</code>, <code>evidence-pack</code></td></tr>
+<tr><td>After a run</td><td><code>receipt-review</code>, <code>jsonprobe-check</code>, <code>error-explain</code>, <code>watch</code>, <code>monitor</code>, <code>audit</code></td></tr>
+<tr><td>Structured configuration</td><td><code>config-explain</code>, <code>config-diff</code>, <code>config-walk</code>, <code>config-set</code>, <code>config-remove</code></td></tr>
+<tr><td>Operations and incidents</td><td><code>runbook</code>, <code>runbook-check</code>, <code>incident</code>, <code>tasks</code></td></tr>
+<tr><td>Setup and acceptance</td><td><code>config</code>, <code>plugin</code>, <code>doctor</code>, <code>pilot</code>, <code>a11y-output-check</code>, <code>ai-assist</code></td></tr>
+</tbody></table></div>
+<p><code>ai-assist</code> sends bounded, redacted input to a configured OpenAI, Anthropic or OpenRouter model only when the <code>--ai</code> flag is given. Its suggestions never write files. No other command needs AI credentials.</p>
+<p>The README describes each command with examples, and the guides in <code>docs/</code> cover the larger workflows.</p>
+
+<h2 id="integrations">Integrations</h2>
+<h3 id="int-terraform">Terraform and OpenTofu</h3>
+<p><code>tofu-check</code> reads <code>show -json</code> plan output, or converts a saved plan with <code>--plan</code> and <code>--engine tofu|terraform</code>. <code>plan-explain</code> covers replacement order, unknown and sensitive values, moves and imports, outputs and security changes. <code>plan-diff</code> compares a reviewed plan with a new one. See <code>docs/spacelift-iac.md</code>.</p>
+<h3 id="int-ansible">Ansible</h3>
+<p><code>ansible-check</code> parses playbook YAML for broad host patterns, <code>shell</code> use, ignored failures, possible plaintext credentials, uncontrolled upgrades and always-changed tasks. For a run, enable the opt-in callback in <code>integrations/ansible/callback_plugins</code>, then read the saved events:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>export ANSIBLE_CALLBACK_PLUGINS=/path/to/rcdo/integrations/ansible/callback_plugins
+export ANSIBLE_CALLBACKS_ENABLED=rcdo
+export RCDO_ANSIBLE_EVENTS=/path/to/new-run.jsonl
+# Run your chosen ansible-playbook command separately.
+rcdo ansible-watch --input /path/to/new-run.jsonl --require-host web-1 --require-host web-2</code></pre></div>
+<p>The callback never records result bodies, variables or module arguments. <code>workflow-check</code> traces Terraform or OpenTofu outputs into Ansible host variables; see <code>docs/terraform-ansible-workflow.md</code>.</p>
+<h3 id="int-aws">AWS and AliCloud</h3>
+<p><code>cloud-context-check</code> compares an identity snapshot, or a live read with <code>--collect</code>, against the cloud, account and region you expect. A mismatch is critical. AWS collection with <code>collect</code> requires an explicit expected account and region. See <code>docs/live-operations.md</code>.</p>
+<h3 id="int-gcloud">Google Cloud</h3>
+<p>Project and account checks, read-only Compute Engine collection scoped to one project and one zone, and create-command previews for networks, subnets, buckets and service accounts. rcdo never logs in, switches configuration or runs the generated commands. Authenticated cloud acceptance is still pending. See <code>docs/google-cloud.md</code>.</p>
+<h3 id="int-multicloud">Comparing clouds</h3>
+<p><code>service-map</code> and <code>service-compare</code> define comparable services and compare two to sixteen normalized deployments. Built-in mappings cover object and block storage on AWS, Azure, Google Cloud and Oracle Cloud. See <code>docs/service-comparison.md</code>.</p>
+<h3 id="int-ci">GitHub Actions and Spacelift</h3>
+<p><code>gha-tool</code> checks workflow permissions, action pinning, secret handling and unsafe triggers. <code>spacelift-check</code> reviews run identity, policy and approval evidence; basic live collection through <code>spacectl api</code> lacks policy evidence and returns <code>INCOMPLETE</code>. <code>integrations/workflow/</code> contains Python recorders and exporters for workflow evidence.</p>
+<h3 id="int-missing-utils">Missing Utils evidence</h3>
+<p>Several commands read artifacts produced by Missing Utils: <code>context</code> reads a <code>contextsnap</code> snapshot, <code>watch</code> reads an <code>eventwhy</code> artifact, <code>receipt-review</code> reads <code>runreceipt</code> evidence and <code>jsonprobe-check</code> imports aggregate <code>jsonprobe</code> readiness results:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>rcdo jsonprobe-check --input readiness-source.json --require api-health \
+  --environment staging --format json</code></pre></div>
+<p>Missing required checks and evidence older than <code>--max-age</code> (15 minutes by default) are <code>INCOMPLETE</code>; failed checks block the review. <code>docs/missing-utils-workflow.md</code> has a local demonstration run from a sibling Missing Utils checkout.</p>
+
+<h2 id="limits">Limits</h2>
+<ul>
+<li>Checks are guardrails, not proof of safety. A later local success never makes an earlier failure or a deployment successful.</li>
+<li>Actual screen-reader, braille-display and magnification use has not yet been measured. Automated width and control-character checks do not establish it. <code>rcdo pilot</code> records an operator's acceptance pass.</li>
+<li>No live employer credentials were used during development. Authenticated AWS, Google Cloud, Spacelift and workplace workflow validation is listed as open work.</li>
+<li><code>watch</code> reviews a finite saved artifact. Continuous live monitoring is not implemented.</li>
+<li><code>permission-check</code> reads one policy document. An Allow is not an effective-access decision, and conditions are reported as incomplete.</li>
+<li><code>ansible-scope</code> does not expand roles or templated limits, and the effective remote user is always unproven. <code>prebuild</code> does not expand roles.</li>
+<li><code>to-markdown</code> does not perform OCR; <code>see</code> does not read text inside images.</li>
+<li>Hashes and caller-supplied receipts show local consistency only. Signed or authenticated evidence is planned.</li>
+<li>Planned, not yet done (from <code>TODO.md</code>): provider exporters for service comparison, mappings beyond storage, broader Google Cloud coverage, and a <code>shell2see</code> plugin wrapper.</li>
+</ul>
+
+<h2 id="fit">How it fits with the other tools</h2>
+<p>rcdo and <a href="/docs/missing-utils.html">Missing Utils</a> share one roadmap. Missing Utils does bounded collection, normalization and process evidence with stable machine-readable schemas. rcdo does the nonvisual side: navigation, previews, interpretation, expectations, review state, runbook progress and handoffs. Each works on its own with files and pipes; neither needs AI or a daemon.</p>
+
+<h2 id="links">Links</h2>
+<ul>
+<li><a href="https://github.com/afterdarksys/rcdo#readme">Full README on GitHub</a></li>
+<li><a href="https://github.com/afterdarksys/rcdo/blob/main/ROADMAP.md">Shared roadmap</a></li>
+<li><a href="https://github.com/afterdarksys/rcdo/tree/main/docs">Workflow guides in docs/</a></li>
+<li><a href="https://github.com/afterdarksys/rcdo/blob/main/docs/shift.md">Shift brief guide</a></li>
+<li><a href="https://github.com/afterdarksys/rcdo/blob/main/docs/accessible-operations/STATUS.md">Delivery status and validation gaps</a></li>
+<li><a href="https://github.com/afterdarksys/rcdo/tree/main/examples">Example inputs and policies</a></li>
+<li><a href="https://github.com/afterdarksys/rcdo/issues">Issue tracker</a></li>
+</ul>
+<p class="source-note">Built from the public <a href="https://github.com/afterdarksys/rcdo">rcdo repository</a> (README, ROADMAP.md, TODO.md, Makefile, go.mod, .tool-versions, cmd/, toolkit/run.go, docs/shift.md, docs/beta-demo.md, docs/workflows.md, docs/google-cloud.md, docs/plugins.md, docs/rego.md, docs/operator-workflows.md, docs/missing-utils-workflow.md, docs/accessible-operations/STATUS.md, shell2see/README.md, examples/) at commit da319d4.</p>
+
+</article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>
