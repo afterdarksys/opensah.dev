@@ -2,25 +2,13 @@
   "version": 1,
   "entries": {
     "79a93d4a2f8f50b95f852280616242fee1855dc99a3c75211917f55e72e95fae": {
-      "last_emitted_at_ms": 1791936855599,
+      "last_emitted_at_ms": 1791952631238,
       "message": "Use parallel execution for independent tasks. Use run_in_background for long operations (npm install, builds, tests)."
     },
     "445ed27a3872b681d98190bae61ccb84954e1bc4e140df5370be958dee776b3a": {
-      "last_emitted_at_ms": 1791936154281,
+      "last_emitted_at_ms": 1791952618622,
       "message": "Verify changes work after editing. Test functionality before marking complete."
-    },
-    "466399dafa2d20f60587180bad0a07358eb7f2bce724df0ff682f038ad33f5ad": {
-      "last_emitted_at_ms": 1791935913258,
-      "message": "Read multiple files in parallel when possible for faster analysis."
-    },
-    "59501403079424f6dbdff8c2a8d924e11a2247722fa18d0fe4d5a50db08abea5": {
-      "last_emitted_at_ms": 1791935906150,
-      "message": "Spawning agent: general-purpose (inherit) | Task: Write rcdo guide page"
-    },
-    "9bd21db0a7be23adbfbf47ca27fa649e5219d7b93bd7e8cb91e8bc021a3d8604": {
-      "last_emitted_at_ms": 1791935892128,
-      "message": "Spawning agent: general-purpose (inherit) | Task: Write Missing Utils guide page"
     }
   },
-  "updated_at": "2026-10-14T00:14:15.599Z"
+  "updated_at": "2026-10-14T04:37:11.238Z"
 }
