@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd ~/development/rcdo && cat shell2see/README.md; echo =====; cat shell2see/Makefile; echo ====; sed -n 1,200p docs/shift.md\",\"description\":\"Read shell2see and shift docs\"}",
-  "error": "Exit code 1\n# shell2see\n\nSmall Go, Python, and Bash utilities demonstrating how a shell can help you see\npatterns in text, preview images, and inspect the contents of PDFs.\n\n| Utility | Language | What it reveals |\n| --- | --- | --- |\n| `textsee` | Go, standard library | Word frequencies as terminal bars or JSON |\n| `imgsee` | Python + Pillow | Image metadata, ASCII previews, thumbnails |\n| `pdfsee` | Python + Poppler | PDF metadata, text, and embedded image files |\n| `pdfgrep` | Bash | Matching...",
-  "timestamp": "2026-10-14T00:00:01.228Z",
-  "retry_count": 2
-}
