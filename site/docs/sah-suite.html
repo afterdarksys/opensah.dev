@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>The SAH utilities | OpenSAH / dev</title><meta name="description" content="What exists in the SAH suite and what each utility is for: opensah, sahconnect, sahapi, sahlink, sahsync, sahxfer, sah2grpc and sahcore, with status, a first command, and which one to reach for."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/sah-suite.html"><meta property="og:type" content="website"><meta property="og:title" content="The SAH utilities | OpenSAH / dev"><meta property="og:description" content="What exists in the SAH suite and what each utility is for: opensah, sahconnect, sahapi, sahlink, sahsync, sahxfer, sah2grpc and sahcore, with status, a first command, and which one to reach for."><meta property="og:url" content="https://opensah.dev/docs/sah-suite.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Suite utilities</p><h1>The SAH utilities: what exists, and what each is for.</h1><p>The suite is a set of small command-line programs that an operator or an agent runs on their own machine against hosts enrolled in SystemAPI. Each does one job. This page is the map: every name, its job, its state today, and which one to reach for.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Suite utilities</strong><a href="/docs/sah-suite.html" aria-current="page">What exists and what for</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a><strong>Accessible tooling</strong><a href="/accessible-tooling.html">Overview</a><a href="/docs/missing-utils.html">Missing Utils</a><a href="/docs/rcdo.html">rcdo</a><a href="/docs/prtool.html">prtool</a></aside><article class="docs-content">
+<nav aria-label="On this page"><ul>
+<li><a href="#map">The map</a></li>
+<li><a href="#choose">Which one do I reach for?</a></li>
+<li><a href="#opensah">opensah</a></li>
+<li><a href="#sahconnect">sahconnect</a></li>
+<li><a href="#sahapi">sahapi</a></li>
+<li><a href="#sahlink">sahlink</a></li>
+<li><a href="#sahsync">sahsync</a></li>
+<li><a href="#sahxfer">sahxfer</a></li>
+<li><a href="#sah2grpc">sah2grpc</a></li>
+<li><a href="#sahcore">sahcore</a></li>
+<li><a href="#install">Install</a></li>
+<li><a href="#status">How to read the states</a></li>
+<li><a href="#links">Links</a></li>
+</ul></nav>
+
+<h2 id="map">The map</h2>
+<p><strong>sah</strong> means Service Automation Hub. The hub is the platform (SystemAPI, ComputeAPI, the execution shell adssh) plus this suite of utilities. Every utility has its own repository, version and release lifecycle. Five are usable end to end today, one of them from a repository that is not public yet; one works between two machines you control but is not yet joined to the hub; one is a library with no command; one name is an idea and one is reserved.</p>
+<div class="table-scroll"><table class="status-table"><thead><tr><th scope="col">Tool</th><th scope="col">Job</th><th scope="col">State</th><th scope="col">Version</th></tr></thead><tbody>
+<tr><td><a href="#opensah">opensah</a></td><td>Local index. Lists every suite name with its role and state, and checks which binaries are on PATH.</td><td><span class="pill available">Available</span></td><td>0.1.0</td></tr>
+<tr><td><a href="#sahconnect">sahconnect</a></td><td>Log in, open a shell on a host through its agent, call the SystemAPI HTTP API, or pass arguments to adssh.</td><td><span class="pill available">Available</span></td><td>0.2.0</td></tr>
+<tr><td><a href="#sahapi">sahapi</a></td><td>A loopback HTTP service with the suite catalog and three read-only SystemAPI proxies, for local tools and agents.</td><td><span class="pill available">Available</span></td><td>0.1.0</td></tr>
+<tr><td><a href="#sahlink">sahlink</a></td><td>Start a process and capture its stdio. A TCP forward through a host's agent is written but not yet published.</td><td><span class="pill available">Available</span></td><td>0.1.0</td></tr>
+<tr><td><a href="#sahsync">sahsync</a></td><td>Copy and sync files and directories through a host's agent. The scp, sftp and rsync-over-SSH replacement.</td><td><span class="pill available">Available</span></td><td>0.1.0, repository not public yet</td></tr>
+<tr><td><a href="#sahxfer">sahxfer</a></td><td>Move one large file fast on its own encrypted UDP plane, once a grant allows it.</td><td><span class="pill">Early development</span></td><td>unversioned</td></tr>
+<tr><td><a href="#sah2grpc">sah2grpc</a></td><td>gRPC debug bridge: a daemon and a client that prints the hub's decisions.</td><td><span class="pill">Early development</span></td><td>no binary yet</td></tr>
+<tr><td>sahmesh</td><td>An idea. One design note, no code.</td><td><span class="pill">Idea</span></td><td>—</td></tr>
+<tr><td><a href="#sahcore">sahcore</a></td><td>Reserved name. No role, binary or service.</td><td><span class="pill">Unassigned</span></td><td>—</td></tr>
+</tbody></table></div>
+<p><code>opensah tools</code> prints the same names on your machine with its own short state words (<code>built</code>, <code>optional</code>, <code>early</code>, <code>not_built</code>, <code>external</code>) and adds the platform names adssh, systemapi and computeapi.</p>
+
+<h2 id="choose">Which one do I reach for?</h2>
+<ul>
+<li><strong>I want a shell on a host.</strong> <a href="#sahconnect">sahconnect</a>. The host's outbound agent runs the terminal, so the host needs no inbound SSH.</li>
+<li><strong>I want to call the SystemAPI HTTP API from a script.</strong> <a href="#sahconnect">sahconnect api</a> with a token or an API key. A local program that should not hold the key talks to <a href="#sahapi">sahapi</a> instead.</li>
+<li><strong>I want to copy a few files, a directory, or keep a tree in sync.</strong> <a href="#sahsync">sahsync</a>. It is audited, refuses symlink tricks, and plans before it deletes.</li>
+<li><strong>I want to move one big file as fast as the network allows.</strong> <a href="#sahxfer">sahxfer</a>. One file, one direction, one grant, its own UDP data plane.</li>
+<li><strong>I want to reach a port on a host, such as a database or RDP.</strong> <a href="#sahlink">sahlink</a>'s TCP forward, the local half of <code>ssh -L</code> without SSH, once the branch that adds it is published.</li>
+<li><strong>I want to record exactly what a program I start reads and writes.</strong> <a href="#sahlink">sahlink run</a>.</li>
+<li><strong>I want to see which suite tools are installed here.</strong> <a href="#opensah">opensah ready</a>.</li>
+<li><strong>I want to drive and inspect SAH decisions from a test harness.</strong> <a href="#sah2grpc">sah2grpc</a>, once it has a binary.</li>
+<li><strong>I want to run commands under policy, with approvals and an audit chain.</strong> That is the shell, <a href="/tools.html#adssh">adssh</a>, not a suite utility.</li>
+</ul>
+<div class="notice"><p><strong>sahsync and sahxfer are not the same tool.</strong> sahsync moves many paths over the agent's file channel, one operation at a time, with an audit line per change. sahxfer moves exactly one regular file and puts the bytes on a separate UDP path with its own encryption, loss repair and pacing. Neither one grows a second login: both use the token that <code>sahconnect login</code> stores.</p></div>
+
+<h2 id="opensah">opensah</h2>
+<span class="pill available">Available</span> <span class="pill">0.1.0</span>
+<p>The local index. <code>opensah tools</code> prints one tab-separated line per suite name: name, state, role. <code>opensah ready</code> checks PATH and exits 1 when sahconnect, sahapi or sahlink (the <code>built</code> tools) is missing; a missing adssh, sahsync or sahxfer is reported without failing the check, and names without a binary are listed as <code>no-binary</code>. It does not start the other tools and does not call their APIs.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>opensah tools
+opensah ready
+opensah version</code></pre></div>
+<p><a href="https://github.com/afterdarksys/opensah">Source and README ↗</a></p>
+
+<h2 id="sahconnect">sahconnect</h2>
+<span class="pill available">Available</span> <span class="pill">0.2.0</span>
+<p>The client. <code>sahconnect login</code> gets a bearer token by OAuth device login (it prints a URL and a code; you open the URL and enter the code, so a forwarded link alone cannot approve a login) and stores it in <code>~/.config/sahconnect/token</code>, mode 0600. <code>sahconnect &lt;host&gt;</code> then opens an interactive shell on that host: the host's outbound agent runs the PTY, so nothing has to listen on the host. Piped stdin runs without raw mode, and the exit code is the remote shell's. <code>--root</code> asks for a root shell and needs the <code>terminal:root</code> scope.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>export SYSTEMAPI_URL=https://systemapi.example
+sahconnect login --username alice     # prints a URL and a code
+sahconnect web1                       # shell on web1
+echo uptime | sahconnect web1         # one command, piped
+sahconnect api GET /api/v1/fleet      # HTTP; SYSTEMAPI_API_KEY works too
+sahconnect ssh -- version             # pass through to the installed adssh
+sahconnect logout</code></pre></div>
+<p><code>sahconnect api</code> makes authenticated SystemAPI HTTP requests. <code>sahconnect ssh</code> launches <code>SAHCONNECT_ADSSH</code>, or adssh on PATH, with your arguments; it does not set <code>ADSSH_SAH</code>. The other file tools reuse this login and this configuration.</p>
+<p><a href="https://github.com/afterdarksys/sahconnect">Source and README ↗</a></p>
+
+<h2 id="sahapi">sahapi</h2>
+<span class="pill available">Available</span> <span class="pill">0.1.0</span>
+<p>A small HTTP service for the machine it runs on. It listens on a loopback address, checks a local bearer of 16 to 512 bytes, and serves a fixed suite catalog plus three fixed, read-only proxies into the operator's SystemAPI: fleet, alerts, and audit verification. <code>/health</code> is unauthenticated. It does not serve OAuth; device login stays in SystemAPI and dashboard login stays in Authentik. Use it when a local tool or agent should query the fleet without holding the SystemAPI key itself.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>export SAHAPI_TOKEN='replace-with-16-or-more-bytes'
+export SAHAPI_LISTEN=127.0.0.1:8787
+export SYSTEMAPI_URL=https://systemapi.example
+# Set SYSTEMAPI_API_KEY through your secret manager.
+sahapi serve</code></pre></div>
+<p><a href="https://github.com/afterdarksys/sahapi">Source and README ↗</a></p>
+
+<h2 id="sahlink">sahlink</h2>
+<span class="pill available">Available</span> <span class="pill">0.1.0 published</span>
+<p><code>sahlink run -- &lt;program&gt;</code> starts a program and records its stdin, stdout and stderr; a control socket on the local machine can read those streams and write to stdin, and an optional relay listens on loopback and dials one upstream host and port. It only sees the process it started: no attaching to an existing PID, no ptrace, and no sockets the child opens on its own.</p>
+<p><strong>Coming in 0.2.0, written but not yet pushed to GitHub:</strong> a TCP forward through the host's agent. <code>sahlink web1:5432</code> listens on <code>127.0.0.1</code> and the agent on web1 dials <code>127.0.0.1:5432</code>, the local half of <code>ssh -L</code> without SSH; <code>sahlink rdp win1</code> opens that forward for RDP and prints the matching mstsc, xfreerdp and macOS <code>open</code> commands. Installing from GitHub today gives you 0.1.0 without it.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahlink run -- /bin/echo ok      # stderr prints the socket and token-file paths</code></pre></div>
+<div class="notice"><p>Captured output can contain secrets the child prints. Treat the capture like the terminal it came from.</p></div>
+<p><a href="https://github.com/afterdarksys/sahlink">Source and README ↗</a></p>
+
+<h2 id="sahsync">sahsync</h2>
+<span class="pill available">Available</span> <span class="pill">0.1.0</span> <span class="pill">Repository not public yet</span>
+<p>File copy and sync through a host's SystemAPI agent: the SAH replacement for scp, sftp and rsync over SSH. A remote is <code>HOST:PATH</code>. <code>put</code> uploads one regular file, <code>get</code> downloads one (or a tree with <code>-r</code>), <code>ls</code> lists, and <code>sync</code> makes a destination tree match a source tree in either direction (<code>--from</code> pulls). It copies whole files with no rolling checksums. <code>--delete</code> without <code>--yes</code> only prints the plan, as does <code>--dry-run</code>; <code>--create</code> makes a missing destination. Every real change writes one <code>audit op=… path=… size=… sha256=…</code> line to stderr, and a refusal is one code word such as <code>exists</code>, <code>symlink_refused</code> or <code>agent_unsupported</code>. <code>--root</code> runs the host helper as root and needs the admin-only <code>file:root</code> scope.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahsync put ./app.tar.gz web1:/srv/app/
+sahsync get web1:/srv/app/note.txt ./
+sahsync ls web1:/srv/app/
+sahsync sync ./site/ web1:/srv/www/
+sahsync sync --from web1:/srv/www/ ./site-copy/
+sahsync sync --delete ./site/ web1:/srv/www/      # prints the plan only; add --yes to apply</code></pre></div>
+<p><strong>How it joins.</strong> sahsync opens its own file channel on the host's agent (<code>file:read</code>, <code>file:write</code> or the admin-only <code>file:root</code> ticket, then one WebSocket session of sequential operations), separate from the terminal channel sahconnect uses. That channel is on SystemAPI's main branch and the suite contract lists sahsync as a wired join. A Linux agent needs a kernel with <code>openat2</code>; a macOS or other non-Linux agent answers <code>agent_unsupported</code>. The client carries import-path-only copies of sahconnect's client, config, token and secure-file packages, so login and configuration are the same. The GitHub repository is still private; ask for access until it is published.</p>
+
+<h2 id="sahxfer">sahxfer</h2>
+<span class="pill">Early development</span> <span class="pill">unversioned</span>
+<p>Bulk transfer of one large file. SAH decides whether the transfer may happen; sahxfer moves the bytes. The decision is a <em>grant</em>: host, root, path, size, hash, direction, expiry and a per-transfer key. The data plane is UDP with a 64-byte header, ChaCha20-Poly1305 sealing, NACK-based loss repair and a BBR-style pacer, so a big file crosses a long path at the rate the path allows rather than one TCP stream's share. One regular file, one direction, one grant: no directories, no deltas, no resume. A failed transfer deletes its temp file and starts over. A Linux end opens paths with <code>openat2</code> (no symlinks, no fallback), so a Linux host needs a kernel that has it.</p>
+<p><strong>What works today.</strong> The grant-file mode, between two machines you control: <code>grant</code> writes a bootstrap grant file (mode 0600, the only disk copy of the key), <code>recv</code> listens with that grant on the receiving host, and <code>put</code> or <code>get</code> runs on the other side. <code>relay</code> forwards sealed datagrams between the two and cannot decrypt them; in grant-file mode it reads the grant file and keeps only the transfer id, route token and byte cap. Every finished command prints the grant id, the transfer id and <code>ok</code>; stderr is a single code word, and <code>--diag</code> adds the socket-buffer sizes and a warning when the receive buffer is too small for the arrival rate.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code># receiving host
+sahxfer recv --grant g.json --listen 0.0.0.0:47100 --root /srv/inbox
+
+# sending machine
+sahxfer put --grant g.json --to 203.0.113.9:47100 ./image.bin</code></pre></div>
+<p><strong>What does not work yet.</strong> The hosted path, <code>sahxfer put --url https://sah.example …</code>, asks the hub for a grant and expects the host's agent to spawn <code>recv</code>. SystemAPI already serves the grant route, but no agent advertises <code>xfer</code> yet, so every real host answers <code>agent_unsupported</code>; no relay is deployed; and only <code>put</code> over UDP is issued, so hosted <code>get</code> and the QUIC transport are refused. The suite contract lists sahxfer as partially wired. Agents will start <code>recv</code> as the host user; it does not drop privileges itself.</p>
+<p><a href="https://github.com/afterdarksys/sahxfer">Source, README and PROTOCOL.md ↗</a></p>
+
+<h2 id="sah2grpc">sah2grpc</h2>
+<span class="pill">Early development</span> <span class="pill">no binary yet</span>
+<p>Debug and integration tooling for SAH over gRPC. The design describes <code>sah2grpc</code>, a daemon that binds loopback only and drives <code>adssh sah</code> for you (an <code>Execute</code> call spawns it, <code>SubmitIdentity</code> feeds it SAML, OIDC or passkey results), and <code>grpc2sah</code>, a client that prints the recorded decisions, so you can test policy, leases, identity flows and bad frames without hand-building frames. The design is accepted and the repository holds the protocol definitions and library packages, but no command has been built yet and nothing is wired: identity results stay <code>not_wired</code> until SAH consumes them.</p>
+<p><a href="https://github.com/afterdarksys/sah2grpc">Source and design ↗</a></p>
+
+<h2 id="sahcore">sahcore</h2>
+<span class="pill">Unassigned</span>
+<p>The name is reserved so it is not reused for a different product. There is no binary, module or service, and <code>opensah ready</code> lists it as <code>no-binary</code>. Nothing should be added there until a role is assigned.</p>
+<p><a href="https://github.com/afterdarksys/sahcore">Placeholder repository ↗</a></p>
+
+<h2 id="install">Install</h2>
+<p>Each installable tool is a Go module with a single command under <code>cmd/</code>; Go 1.26 or later builds them. Clone and install the ones you want, put <code>GOBIN</code> (or <code>$(go env GOPATH)/bin</code>) on PATH, then let opensah confirm what is there. The <a href="/getting-started.html">install guide</a> walks through the three core tools and the shell.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>for r in opensah sahconnect sahapi sahlink sahxfer; do
+  git clone https://github.com/afterdarksys/$r.git
+  (cd $r && go install ./cmd/$r)
+done
+opensah ready</code></pre></div>
+<p>No tool has a packaged release download yet; the versions above are the <code>version</code> strings on each repository's default branch.</p>
+
+<h2 id="status">How to read the states</h2>
+<ul>
+<li><strong>Available.</strong> Built, tested, and listed as a wired join in the suite contract: it works against today's SystemAPI.</li>
+<li><strong>Early development.</strong> The program or library exists, but the hub or agent side it needs is not wired yet, so an end-to-end run is refused. <code>opensah tools</code> prints these as <code>early</code>.</li>
+<li><strong>opensah's <code>built</code> versus <code>optional</code>.</strong> <code>opensah ready</code> fails only when a <code>built</code> tool (sahconnect, sahapi, sahlink) is missing; <code>optional</code> tools such as sahsync and <code>early</code> ones such as sahxfer are reported without failing.</li>
+<li><strong>Unassigned.</strong> A reserved name with nothing behind it.</li>
+</ul>
+<p>The <a href="/roadmap.html">availability and roadmap</a> page tracks the joins between the platform pieces; this page tracks the utilities themselves.</p>
+
+<h2 id="links">Links</h2>
+<ul>
+<li><a href="/tools.html">Tool reference</a> for the full ecosystem, including the shell and the farm tools</li>
+<li><a href="/getting-started.html">Install and first steps</a></li>
+<li><a href="https://github.com/afterdarksys">afterdarksys on GitHub</a></li>
+</ul>
+<p class="source-note">Built on 2026-10-18 from each tool's README and source and from the SystemAPI suite contract (docs/sah-suite.md), which decides what counts as wired when a README disagrees.</p>
+
+</article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>
