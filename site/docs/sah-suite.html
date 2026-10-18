@@ -24,7 +24,7 @@
 <tr><td><a href="#opensah">opensah</a></td><td>Local index. Lists every suite name with its role and state, and checks which binaries are on PATH.</td><td><span class="pill available">Available</span></td><td>0.1.0</td></tr>
 <tr><td><a href="#sahconnect">sahconnect</a></td><td>Log in, open a shell on a host through its agent, call the SystemAPI HTTP API, or pass arguments to adssh.</td><td><span class="pill available">Available</span></td><td>0.2.0</td></tr>
 <tr><td><a href="#sahapi">sahapi</a></td><td>A loopback HTTP service with the suite catalog and three read-only SystemAPI proxies, for local tools and agents.</td><td><span class="pill available">Available</span></td><td>0.1.0</td></tr>
-<tr><td><a href="#sahlink">sahlink</a></td><td>Start a process and capture its stdio. A TCP forward through a host's agent is written but not yet published.</td><td><span class="pill available">Available</span></td><td>0.1.0</td></tr>
+<tr><td><a href="#sahlink">sahlink</a></td><td>Start a process and capture its stdio; forward one TCP port, or RDP, through a host's agent.</td><td><span class="pill available">Available</span></td><td>0.2.0</td></tr>
 <tr><td><a href="#sahsync">sahsync</a></td><td>Copy and sync files and directories through a host's agent. The scp, sftp and rsync-over-SSH replacement.</td><td><span class="pill available">Available</span></td><td>0.1.0, repository not public yet</td></tr>
 <tr><td><a href="#sahxfer">sahxfer</a></td><td>Move one large file fast on its own encrypted UDP plane, once a grant allows it.</td><td><span class="pill">Early development</span></td><td>unversioned</td></tr>
 <tr><td><a href="#sah2grpc">sah2grpc</a></td><td>gRPC debug bridge: a daemon and a client that prints the hub's decisions.</td><td><span class="pill">Early development</span></td><td>no binary yet</td></tr>
@@ -39,7 +39,7 @@
 <li><strong>I want to call the SystemAPI HTTP API from a script.</strong> <a href="#sahconnect">sahconnect api</a> with a token or an API key. A local program that should not hold the key talks to <a href="#sahapi">sahapi</a> instead.</li>
 <li><strong>I want to copy a few files, a directory, or keep a tree in sync.</strong> <a href="#sahsync">sahsync</a>. It is audited, refuses symlink tricks, and plans before it deletes.</li>
 <li><strong>I want to move one big file as fast as the network allows.</strong> <a href="#sahxfer">sahxfer</a>. One file, one direction, one grant, its own UDP data plane.</li>
-<li><strong>I want to reach a port on a host, such as a database or RDP.</strong> <a href="#sahlink">sahlink</a>'s TCP forward, the local half of <code>ssh -L</code> without SSH, once the branch that adds it is published.</li>
+<li><strong>I want to reach a port on a host, such as a database or RDP.</strong> <a href="#sahlink">sahlink</a>'s TCP forward, the local half of <code>ssh -L</code> without SSH.</li>
 <li><strong>I want to record exactly what a program I start reads and writes.</strong> <a href="#sahlink">sahlink run</a>.</li>
 <li><strong>I want to see which suite tools are installed here.</strong> <a href="#opensah">opensah ready</a>.</li>
 <li><strong>I want to drive and inspect SAH decisions from a test harness.</strong> <a href="#sah2grpc">sah2grpc</a>, once it has a binary.</li>
@@ -79,10 +79,13 @@ sahapi serve</code></pre></div>
 <p><a href="https://github.com/afterdarksys/sahapi">Source and README ↗</a></p>
 
 <h2 id="sahlink">sahlink</h2>
-<span class="pill available">Available</span> <span class="pill">0.1.0 published</span>
+<span class="pill available">Available</span> <span class="pill">0.2.0</span>
 <p><code>sahlink run -- &lt;program&gt;</code> starts a program and records its stdin, stdout and stderr; a control socket on the local machine can read those streams and write to stdin, and an optional relay listens on loopback and dials one upstream host and port. It only sees the process it started: no attaching to an existing PID, no ptrace, and no sockets the child opens on its own.</p>
-<p><strong>Coming in 0.2.0, written but not yet pushed to GitHub:</strong> a TCP forward through the host's agent. <code>sahlink web1:5432</code> listens on <code>127.0.0.1</code> and the agent on web1 dials <code>127.0.0.1:5432</code>, the local half of <code>ssh -L</code> without SSH; <code>sahlink rdp win1</code> opens that forward for RDP and prints the matching mstsc, xfreerdp and macOS <code>open</code> commands. Installing from GitHub today gives you 0.1.0 without it.</p>
-<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahlink run -- /bin/echo ok      # stderr prints the socket and token-file paths</code></pre></div>
+<p><strong>Since 0.2.0, a TCP forward through the host's agent.</strong> <code>sahlink web1:5432</code> listens on <code>127.0.0.1</code> and the agent on web1 dials <code>127.0.0.1:5432</code>, the local half of <code>ssh -L</code> without SSH; <code>-L PORT</code> picks the local port and <code>--via AGENT ADDR:PORT</code> reaches a host that has no agent through one that does. <code>sahlink rdp win1</code> opens that forward for RDP, keeps it up, and prints the matching mstsc, xfreerdp and macOS <code>open</code> commands. Reverse forwards (<code>-R</code>) are refused as <code>reverse_unsupported</code>.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahlink run -- /bin/echo ok      # stderr prints the socket and token-file paths
+sahlink web1:5432               # local port to the host's PostgreSQL
+sahlink -L 15432 web1:5432      # choose the local port
+sahlink rdp win1</code></pre></div>
 <div class="notice"><p>Captured output can contain secrets the child prints. Treat the capture like the terminal it came from.</p></div>
 <p><a href="https://github.com/afterdarksys/sahlink">Source and README ↗</a></p>
 
