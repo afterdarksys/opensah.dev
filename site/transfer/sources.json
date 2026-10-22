@@ -1,0 +1,48 @@
+{
+  "reviewed": "2026-10-22",
+  "note": "Exact local source snapshots; SHA-256 identifies the published bytes. Deployment status was not verified.",
+  "sources": [
+    {
+      "page": "protocol.html",
+      "repository": "sahxfer",
+      "source": "PROTOCOL.md",
+      "head": "30830a6b76fe4765048925c26e1ac216b1f981af",
+      "sha256": "99615ca5e2d71217181ca259b5e594920285f53c170f8cccf0d2d3caffbd41c8"
+    },
+    {
+      "page": "performance.html",
+      "repository": "sahxfer",
+      "source": "docs/performance.md",
+      "head": "30830a6b76fe4765048925c26e1ac216b1f981af",
+      "sha256": "38658dca8f0899262db49ba1b233cfa4ef0fbc74cb59701a71c7533303364da4"
+    },
+    {
+      "page": "streams.html",
+      "repository": "sahxfer",
+      "source": "docs/durable-streams.md",
+      "head": "30830a6b76fe4765048925c26e1ac216b1f981af",
+      "sha256": "9cb56b8cb813ff06334970da60a8274ea49c9ea7ffc720f65e7c3b171efd4d62"
+    },
+    {
+      "page": "sahsync.html",
+      "repository": "sahsync",
+      "source": "docs/usage.md",
+      "head": "d49de44bd60f43099bf32882f93588231bd6754d",
+      "sha256": "f45a7332d3cd2c5f47621a5874cb23aab4253248d2fa8bffdf42fc7e98e1e693"
+    },
+    {
+      "page": "paths.html",
+      "repository": "sahsync",
+      "source": "docs/paths.md",
+      "head": "d49de44bd60f43099bf32882f93588231bd6754d",
+      "sha256": "3a8fa0ad4e9e2321394fc9571564a1389e39b29aa400aff2043e5d4bb1d29814"
+    },
+    {
+      "page": "file-protocol.html",
+      "repository": "systemapi.io",
+      "source": "docs/sah-file-protocol.md",
+      "head": "3b43770668075fd3bc38a83ebd70cb007ba1bb24",
+      "sha256": "304b42858d5cee3eab10dc5e81fb6239c4f4dadeec2ce2e9ba6645115e94712e"
+    }
+  ]
+}

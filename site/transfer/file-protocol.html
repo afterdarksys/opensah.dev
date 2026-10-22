@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SystemAPI agent file protocol | OpenSAH / dev</title><meta name="description" content="The complete server-owned sahsync file-session contract."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/transfer/file-protocol.html"><meta property="og:type" content="website"><meta property="og:title" content="SystemAPI agent file protocol"><meta property="og:description" content="The complete server-owned sahsync file-session contract."><meta property="og:url" content="https://opensah.dev/transfer/file-protocol.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Transfer documentation</p><h1>SystemAPI agent file protocol</h1><p>The complete server-owned sahsync file-session contract.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><a href="/index.html">Documentation home</a><a href="/api.html">Ecosystem API reference</a><strong>File transfer</strong><a href="/transfer/index.html">Transfer overview</a><a href="/transfer/quickstart.html">Human & agent quickstarts</a><a href="/transfer/protocol.html">sahxfer wire protocol v1</a><a href="/transfer/api.html">Transfer API & lifecycle</a><a href="/transfer/compatibility.html">Compatibility & limits</a><a href="/transfer/security.html">Security & failure semantics</a><a href="/transfer/performance.html">Performance & measurements</a><a href="/transfer/roadmap.html">Experiments & streaming</a><a href="/transfer/sahsync.html">sahsync usage</a><a href="/transfer/paths.html">sahsync path rules</a><a href="/transfer/file-protocol.html" aria-current="page">Agent file protocol</a></aside><article class="docs-content"><p>Checked October 22, 2026. Source: <code>systemapi.io/docs/sah-file-protocol.md</code> at <code>3b4377066807</code>. <a href="/transfer/file-protocol.md">Download the exact Markdown snapshot</a>.</p>
+<p><strong>Source-status discrepancy:</strong> the source header still says “phase 0, not yet implemented,” while the published suite lists sahsync as available. This snapshot preserves the contract verbatim; neither label verifies your deployed server. Consult the client usage/path pages for client-specific restrictions. Changes to this contract belong to its server owner.</p>
+<div class="toc">
+<ul>
+<li><a href="#file-protocol-sahsync-systemapi">File protocol: sahsync ↔ SystemAPI</a></li>
+<li><a href="#0-model">0. Model</a></li>
+<li><a href="#1-auth-resolve-transport">1. Auth, resolve, transport</a></li>
+<li><a href="#2-scopes-and-ticket">2. Scopes and ticket</a></li>
+<li><a href="#3-websocket-and-session-frames">3. WebSocket and session frames</a></li>
+<li><a href="#4-requests-and-responses">4. Requests and responses</a></li>
+<li><a href="#5-paths-the-exact-rules">5. Paths: the exact rules</a></li>
+<li><a href="#6-data-transfer-backpressure-integrity-resume">6. Data transfer, backpressure, integrity, resume</a></li>
+<li><a href="#7-identity-lease-limits">7. Identity, lease, limits</a></li>
+<li><a href="#8-error-codes">8. Error codes</a></li>
+<li><a href="#9-audit-owner-decision-on-volume-2026-10-14">9. Audit (owner decision on volume, 2026-10-14)</a></li>
+<li><a href="#10-threats">10. Threats</a></li>
+<li><a href="#11-conformance">11. Conformance</a></li>
+<li><a href="#12-tests-negative-cases-ship-with-phase-0">12. Tests (negative cases ship with phase 0)</a></li>
+<li><a href="#13-owner-decisions-2026-10-14">13. Owner decisions (2026-10-14)</a></li>
+<li><a href="#14-implementation-decisions-where-112-were-silent">14. Implementation decisions (where §1–§12 were silent)</a></li>
+</ul>
+</div>
+<h2 id="file-protocol-sahsync-systemapi">File protocol: sahsync ↔ SystemAPI</h2>
+<p>Status: contract, phase 0, not yet implemented. Both sides implement exactly
+this. Change it only by editing this file and both implementations in the same
+change. List the call in <code>sah-suite.md</code> Wired join when it ships. Conventions
+follow <code>sahconnect-terminal-protocol.md</code> (the PTY contract). <strong>(rec)</strong> marks a
+recommendation that is not yet in the code. Owner decisions (2026-10-14) are
+folded in: see §13. The choices the implementation made where this text was
+silent or ambiguous are in §14.</p>
+<h2 id="0-model">0. Model</h2>
+<p><strong>One WebSocket is one session.</strong> It carries <strong>strictly sequential</strong>
+request/response operations under one ticket, one root and one identity.</p>
+<p>A session, rather than one WebSocket per operation, because:
+- A <code>sync</code> touches thousands of paths, so one ticket per operation would hit
+  the ticket rate limit.
+- It would also cost a TLS handshake and a lease every time.</p>
+<p>Sequential, because:
+- Every response is unambiguous.
+- The audit order equals the execution order.
+- Throughput comes from pipelined chunks <em>inside</em> a read or write (§6).
+- A client that wants parallel work opens more sessions, up to its per-actor
+  cap.</p>
+<h2 id="1-auth-resolve-transport">1. Auth, resolve, transport</h2>
+<p>The same as PTY:
+- the bearer token or <code>X-API-Key</code>, in a header only;
+- <code>GET /api/v1/hosts/resolve</code>;
+- TLS 1.3 with the system CA pool.</p>
+<h2 id="2-scopes-and-ticket">2. Scopes and ticket</h2>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Purpose</th>
+<th scope="col">Scopes required</th>
+<th scope="col">Ops allowed</th>
+<th scope="col">Runs as</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>file:read</code></td>
+<td><code>file:read</code> (operator)</td>
+<td>stat, list, read, hash</td>
+<td>the host's <code>pty_user</code></td>
+</tr>
+<tr>
+<td><code>file:write</code></td>
+<td><code>file:read</code> + <code>file:write</code> (operator)</td>
+<td>all</td>
+<td>the host's <code>pty_user</code></td>
+</tr>
+<tr>
+<td><code>file:root</code></td>
+<td><code>file:root</code> (admin only, like <code>terminal:root</code>)</td>
+<td>all</td>
+<td>root</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>file:root</code> uses the privileged ticket budget.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>POST /api/v1/ws-ticket
+{"host_id":"&lt;id&gt;","purpose":"file:read"|"file:write"|"file:root","root":"/srv/app"}
+</code></pre></div>
+<ul>
+<li><strong><code>root</code></strong> is either:</li>
+<li>an absolute host path: 1–4096 bytes, starting with <code>/</code>; no <code>.</code> or <code>..</code>
+    component; no empty component; no trailing <code>/</code> (except <code>/</code> itself); no NUL
+    or control characters;</li>
+<li>or <code>"~"</code>, the <code>pty_user</code>'s home directory. <code>"~"</code> is refused for
+    <code>file:root</code>.</li>
+<li><strong>Server policy</strong> <strong>(rec: a <code>file_policy</code> column, per host, with a tenant
+  default)</strong>: <code>{"roots":[{"path":"/srv/app","read":true,"write":true}]}</code>.</li>
+<li>The default is <code>{"roots":[]}</code>, which denies everything.</li>
+<li>The requested <code>root</code> must equal an allowed <code>path</code> or sit beneath one, on a
+    path-component boundary.</li>
+<li>The matching entry must permit the mode.</li>
+<li><code>file:root</code> also needs <code>"root":true</code> on the entry.</li>
+<li><strong>Binding.</strong> The ticket is bound to host, purpose <strong>and root</strong>.</li>
+<li><strong>Success.</strong> <code>200 {"ticket":"stk_...","expires_at":"&lt;iso8601&gt;","expires_in":60,"host_id":"...","purpose":"..."}</code>.
+  The ticket is single-use and valid for 60 s.</li>
+<li><strong>Errors:</strong></li>
+<li><code>400 bad_purpose</code>;</li>
+<li><code>400 bad_root</code>;</li>
+<li><code>403 scope_denied</code>;</li>
+<li><code>403 root_denied</code>;</li>
+<li><code>404 not_found</code>;</li>
+<li><code>429 rate_limited</code>.</li>
+</ul>
+<h2 id="3-websocket-and-session-frames">3. WebSocket and session frames</h2>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>wss://&lt;systemapi&gt;/api/v1/systems/file/&lt;host_id&gt;?ticket=&lt;ticket&gt;&amp;purpose=&lt;purpose&gt;
+</code></pre></div>
+<ul>
+<li><strong>Upgrade rules</strong> are identical to PTY §3: the ticket only, <code>api_key</code> gets
+  401, and the Origin allowlist applies.</li>
+<li><strong>Server → client session frames:</strong></li>
+<li><code>{"type":"file_status","payload":{"status":"starting"}}</code></li>
+<li><code>{"type":"file_status","payload":{"status":"ready","session_id":"fls_...","root":"/srv/app","user":"deploy","limits":{"chunk_max":1048576,"read_max":8388608,"write_window":8,"file_max":17179869184,"list_max":1000}}}</code><ul>
+<li><code>root</code> is the canonical path the agent opened.</li>
+<li>A request before <code>ready</code> is a <code>protocol_error</code>.</li>
+</ul>
+</li>
+<li><code>{"type":"file_status","payload":{"error":"&lt;code&gt;"}}</code>, then the server
+    closes with 1011.</li>
+<li><code>{"type":"file_close","payload":{"session_id":"fls_...","reason":"&lt;reason&gt;","ops":N,"bytes_read":N,"bytes_written":N}}</code>,
+    then the server closes with 1000.</li>
+<li><strong>Frame size.</strong> Text frames are capped at 64 KiB, binary frames at
+  <code>chunk_max</code>. Larger closes with 1009.</li>
+</ul>
+<h2 id="4-requests-and-responses">4. Requests and responses</h2>
+<ul>
+<li><strong>Request shape.</strong> Every request is a JSON text frame with <code>type</code>,
+  <code>request_id</code> and <code>op</code> (both spellings of <code>type</code> are in §14).</li>
+<li><code>request_id</code> matches <code>^[A-Za-z0-9_-]{1,64}$</code> and is unique per session. A
+    reused id is a <code>protocol_error</code>. The one exception is a write: its
+    chunks, commit and abort carry the <code>write_open</code>'s <code>request_id</code> (§14).</li>
+<li>
+<p><strong>Response shape.</strong> Exactly one response per operation:</p>
+<p>{"type":"file_result","request_id":"r7","op":"<op>","status":"ok"|"error","error":null|"<code>", ...op fields}</p>
+</li>
+<li>
+<p><strong>Field formats.</strong></p>
+</li>
+<li><code>sha256</code> is 64 lowercase hex characters.</li>
+<li><code>mtime_ns</code> is integer nanoseconds since the epoch, a signed 64-bit
+    integer (-2^63 ≤ v &lt; 2^63). It exceeds 2^53, so a client in JavaScript
+    MUST parse and send it exactly (not as a double). An <code>if_match</code> whose
+    <code>mtime_ns</code> is outside that range is <code>bad_request</code>.</li>
+<li>An entry is
+    <code>{"name":"&lt;component&gt;","type":"file"|"dir"|"symlink"|"other","size":N,"mode":"0644","mtime_ns":N}</code>.
+    A symlink's target is never returned.</li>
+<li><strong>Sequencing.</strong> A new request before the previous <code>file_result</code> is a
+  <code>protocol_error</code>. The only exception is <code>write_chunk</code>, <code>write_commit</code> and
+  <code>write_abort</code> for the open write.</li>
+<li><strong>Unknown <code>op</code>.</strong> Gets a <code>bad_request</code> result. The session stays open.</li>
+</ul>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">op</th>
+<th scope="col">Request fields</th>
+<th scope="col">ok-response fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>stat</code></td>
+<td><code>path</code></td>
+<td><code>entry</code></td>
+</tr>
+<tr>
+<td><code>list</code></td>
+<td><code>path</code>, <code>cursor</code> (string or null), <code>limit</code> (1–1000, default 500)</td>
+<td><code>entries</code> (sorted bytewise by name), <code>next_cursor</code> (null at the end)</td>
+</tr>
+<tr>
+<td><code>read</code></td>
+<td><code>path</code>, <code>offset</code> ≥ 0, <code>length</code> (1–<code>read_max</code>), optional <code>if_match</code> <code>{"size","mtime_ns"}</code></td>
+<td><code>bytes</code>, <code>eof</code>, <code>size</code>, <code>mtime_ns</code> (after the data frames, §6)</td>
+</tr>
+<tr>
+<td><code>hash</code></td>
+<td><code>path</code>, optional <code>if_match</code></td>
+<td><code>sha256</code>, <code>size</code>, <code>mtime_ns</code></td>
+</tr>
+<tr>
+<td><code>write_open</code></td>
+<td><code>path</code>, <code>size</code>, <code>sha256</code>, <code>overwrite</code> (bool), optional <code>mode</code> (octal string <code>0600</code>–<code>0777</code>, no setuid/setgid/sticky), <code>resume</code> (bool)</td>
+<td><code>upload_id</code> (<code>upl_...</code>), <code>offset</code>, <code>prefix_sha256</code> (when <code>offset</code> &gt; 0)</td>
+</tr>
+<tr>
+<td><code>write_chunk</code></td>
+<td>the write's <code>request_id</code>, <code>offset</code>, <code>length</code> (1–<code>chunk_max</code>), then one binary frame</td>
+<td><code>write_ack</code> (§6), not a <code>file_result</code></td>
+</tr>
+<tr>
+<td><code>write_commit</code></td>
+<td>the write's <code>request_id</code></td>
+<td><code>sha256</code>, <code>size</code>, <code>path</code></td>
+</tr>
+<tr>
+<td><code>write_abort</code></td>
+<td>the write's <code>request_id</code></td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>mkdir</code></td>
+<td><code>path</code>, <code>parents</code> (bool), optional <code>mode</code></td>
+<td><code>entry</code></td>
+</tr>
+<tr>
+<td><code>remove</code></td>
+<td><code>path</code></td>
+<td>none</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong><code>remove</code></strong> deletes one regular file, one symlink (the link itself, never
+  its target) or one EMPTY directory.</li>
+<li>There is no recursive remove.</li>
+<li>A non-empty directory gives <code>not_empty</code>.</li>
+<li><strong><code>read</code> and <code>hash</code></strong> work only on regular files.</li>
+<li>They open with <code>O_NONBLOCK</code>, <code>fstat</code>, and check the type, so a FIFO can
+    never block.</li>
+<li>If <code>if_match</code> is given and the size or <code>mtime_ns</code> differs, the result is
+    <code>changed</code>.</li>
+</ul>
+<h2 id="5-paths-the-exact-rules">5. Paths: the exact rules</h2>
+<ol>
+<li><strong>Shape.</strong></li>
+<li><code>path</code> is relative to the session root: UTF-8, 1–4096 bytes, separated by
+     <code>/</code>. Each component is 1–255 bytes.</li>
+<li><code>"."</code> alone means the root.</li>
+<li>These are refused with <code>bad_path</code>:<ul>
+<li>a leading <code>/</code>;</li>
+<li>an empty component (<code>a//b</code>) or a trailing <code>/</code>;</li>
+<li>a component that is <code>.</code> (other than the whole path) or <code>..</code>;</li>
+<li>NUL, the bytes 0x01–0x1F and 0x7F, or <code>\</code>;</li>
+<li>invalid UTF-8.</li>
+</ul>
+</li>
+<li>Nothing is decoded: <code>%2e%2e</code> is a literal file name. There is no Unicode
+     normalization.</li>
+<li><strong>Reserved names.</strong> A component matching <code>.sahsync-*.part</code> gives
+   <code>reserved_name</code>.</li>
+<li><strong>Root.</strong></li>
+<li>At session start the agent opens the root with
+     <code>openat2(AT_FDCWD, root, O_PATH|O_DIRECTORY, RESOLVE_NO_SYMLINKS)</code>.</li>
+<li>Any symlink component, or a root that is not a directory, gives
+     <code>root_invalid</code>.</li>
+<li>The fd is held for the whole session.</li>
+<li><strong>Resolution.</strong></li>
+<li>Every operation uses
+     <code>openat2(rootfd, path, ..., RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS|RESOLVE_NO_MAGICLINKS)</code>.</li>
+<li><strong><code>openat2</code> is required (Linux 5.6 or later).</strong> A kernel without it gives
+     <code>agent_unsupported</code>; there is no fallback in phase 0.</li>
+<li><strong>No symlink below the root is ever followed</strong>, for reads or writes,
+     whether it points inside or outside the root. Meeting one gives
+     <code>symlink_refused</code>.</li>
+<li><code>stat</code>, <code>list</code> and <code>remove</code> act on a final symlink itself (<code>lstat</code>
+     semantics, <code>unlinkat</code>).</li>
+<li><strong>Writes.</strong></li>
+<li>The temp file is <code>.sahsync-&lt;upload_id&gt;.part</code>, in the target's parent
+     dirfd. It is opened <code>O_CREAT|O_EXCL|O_NOFOLLOW|O_WRONLY</code> with mode 0600.</li>
+<li>Commit is <code>renameat2(RENAME_NOREPLACE)</code> when <code>overwrite</code> is false.
+     Otherwise it is <code>renameat</code> onto an existing <strong>regular file</strong> only. A
+     directory or symlink in the way gives <code>not_a_file</code>.</li>
+<li>All of this works through dirfds, never by resolving path strings again.</li>
+<li><strong>Known gap.</strong> A hard link inside the root to a file outside it cannot be
+   detected. The kernel's permissions for the identity running the operation
+   limit what it can reach.</li>
+</ol>
+<h2 id="6-data-transfer-backpressure-integrity-resume">6. Data transfer, backpressure, integrity, resume</h2>
+<ul>
+<li><strong>Read.</strong></li>
+<li>The server sends zero or more pairs: a
+    <code>{"type":"read_chunk","request_id":"r7","offset":N,"length":L}</code> text frame,
+    then exactly one binary frame of exactly L bytes (L ≤ <code>chunk_max</code>).</li>
+<li>Then it sends the <code>file_result</code>.</li>
+<li>The client pulls one range at a time (<code>length</code> ≤ <code>read_max</code>).</li>
+<li><strong>Write.</strong></li>
+<li>After <code>write_open</code>, the client sends pairs: a
+    <code>{"type":"write_chunk","request_id":"r9","offset":N,"length":L}</code> text frame,
+    then one binary frame of L bytes.</li>
+<li><code>offset</code> must equal the next expected offset, or the result is
+    <code>offset_mismatch</code>.</li>
+<li>After each chunk is written to the temp file, the server sends
+    <code>{"type":"write_ack","request_id":"r9","offset":&lt;next&gt;}</code>.</li>
+<li>At most <code>write_window</code> (8) chunks may be unacknowledged.</li>
+<li>Data beyond the declared <code>size</code> gives <code>too_large</code>.</li>
+<li><strong>Commit</strong> (atomic, with integrity checked end to end):</li>
+<li>Check that <code>offset == size</code>.</li>
+<li>fsync the temp file.</li>
+<li><strong>Re-read it from disk</strong> to compute its sha256.</li>
+<li>Compare that with the declared sha256. A mismatch deletes the temp file
+     and returns <code>sha256_mismatch</code>.</li>
+<li>Apply <code>mode</code>, rename (§5.5), and fsync the parent directory.</li>
+<li>Only then return <code>ok</code>.</li>
+</ul>
+<p>A partial or corrupt upload is never visible at the target path.
+- <strong>Abort.</strong> <code>write_abort</code> deletes the temp file and its record. With no open
+  write, the result is <code>upload_not_found</code>.
+- <strong>Kept or discarded.</strong> A write that ends without a commit either keeps its
+  temp file and record for resume, or discards both:
+  - <strong>discarded</strong>: <code>write_abort</code>; <code>sha256_mismatch</code>; the client's own faults,
+    which a resume could not repair: a chunk at the wrong offset or a commit
+    before the last byte (<code>offset_mismatch</code>), data past the declared size
+    (<code>too_large</code>), a malformed chunk (<code>bad_request</code>);
+  - <strong>kept</strong>: the session ending or the connection dropping mid-write, and a
+    host fault on a chunk or the commit (<code>no_space</code>, <code>permission_denied</code>,
+    <code>io_error</code>, ...). A <code>write_open</code> whose audit row cannot be written is
+    answered <code>internal</code> and its upload is kept.
+- <strong>Chunks after the write ended.</strong> Chunks the client sent before it saw the
+  write end are read and dropped, at most <code>write_window</code> per write; one more
+  is a <code>protocol_error</code>.
+- <strong>Resume an upload.</strong>
+  - The client sends <code>write_open</code> with <code>resume:true</code> and the same path, size
+    and sha256.
+  - If there is a live upload for the same actor, host, root, path, size and
+    sha256, the server returns its <code>upload_id</code>, <code>offset</code> (the bytes durably
+    written) and <code>prefix_sha256</code>.
+  - The client MUST compare <code>prefix_sha256</code> with its own local prefix. On a
+    mismatch, abort and restart.
+  - Interrupted uploads are kept for 24 h. Where each part lives (this
+    settles §5.5 against the line above it in earlier drafts):
+    - the <strong>record</strong> (actor hash, root, path, size, sha256, creation time)
+      lives in the agent's state directory, as
+      <code>&lt;state dir&gt;/file-uploads/&lt;upload_id&gt;.json</code> (0600, in a 0700
+      directory), never in the target tree;
+    - the <strong>bytes</strong> stay in <code>.sahsync-&lt;upload_id&gt;.part</code> beside the target,
+      in its parent directory (§5.5), because the commit must be an atomic
+      rename within one directory.
+  - Expired uploads (temp file, then record) are swept at every session
+    start and hourly while the agent runs.
+  - <strong>Upload cap.</strong> One actor holds at most 16 live uploads (open or
+    interrupted) under one root on one agent. A new <code>write_open</code> past that is
+    <code>no_space</code>; a resume that reopens an existing upload's temp file is not
+    a new upload. A resume whose temp file cannot be reopened (gone,
+    replaced, or not a regular file) starts a new upload: the agent first
+    removes the stale temp file and record, then applies the cap as to any
+    new upload. The check and the new record are serialized per actor and
+    root across sessions, so concurrent <code>write_open</code>s cannot overshoot it.
+    The client frees a slot by resuming and committing or aborting, or by
+    letting an upload expire. Only the agent can see the records, so only
+    the agent enforces this cap.
+- <strong>Download.</strong>
+  1. <code>stat</code> the file.
+  2. <code>read</code> it in ranges, with <code>if_match</code>, into a local temp file.
+  3. Finish with <code>hash</code> (with <code>if_match</code>) and compare the sha256 with the local
+     temp file.
+  4. Rename locally.</p>
+<p>To resume, continue from the local partial length. <code>changed</code> means restart
+  from zero.
+- <strong>Agent hop.</strong>
+  - There is an 8 MiB credit window per session.
+  - Binary data is shaped <code>[1-byte id length][session id][bytes]</code>.
+  - The server stops reading the client while credit is zero, and stops
+    granting the agent credit while the client's <code>bufferedAmount</code> is above
+    8 MiB.
+  - Nothing is ever dropped.</p>
+<h2 id="7-identity-lease-limits">7. Identity, lease, limits</h2>
+<ul>
+<li><strong>Identity.</strong></li>
+<li><code>file:read</code> and <code>file:write</code> run as the host's <code>--pty-user</code>, with uid, gid
+    and supplementary groups dropped as for PTY. They never run as the agent's
+    user.</li>
+<li>The agent runs each session in a child helper process
+    (<code>systemapi-agent file-helper</code>), started with <code>SysProcAttr.Credential</code> as
+    <code>pty_unix.go</code> does. This is an owner decision: Go cannot drop privileges
+    safely per goroutine.</li>
+<li><code>file:root</code> runs the helper as root, and only on a root agent.</li>
+<li>A non-root agent refuses everything unless <code>--pty-allow-agent-user</code> is set.</li>
+<li>With <code>--pty-user-map</code>, the account is the <code>actor</code>'s own entry, resolved
+    exactly as for <code>terminal:open</code> (<code>docs/sahconnect-terminal-protocol.md</code>
+    §6); an actor with no entry is refused with <code>account_unmapped</code>.</li>
+<li>Errors: <code>pty_user_unset</code>, <code>account_unmapped</code>, <code>root_unavailable</code>.</li>
+<li><strong>Lease.</strong> Actions <code>file</code> and <code>file_root</code>.</li>
+<li>The signed payload is
+    <code>"&lt;session_id&gt;\n&lt;deadline_unix&gt;\n&lt;start|renew&gt;\n&lt;read|write&gt;\n&lt;root&gt;"</code>.</li>
+<li>The agent refuses a write op on a read lease.</li>
+<li>The TTL is 60 s, renewed every 30 s.</li>
+<li><strong>Every renewal re-checks the grant</strong> first, as the upgrade does: the
+    actor's membership and scopes, an API key still active (not revoked,
+    locked or expired), and the root policy. A denial ends the session with
+    <code>stopped</code> and no new lease is signed. A failed lookup only skips that
+    renewal: nothing is signed, and the agent ends the session when the last
+    lease lapses.</li>
+<li>The session id matches <code>^fls_[A-Za-z0-9_-]{16,64}$</code>.</li>
+<li><strong>Limits</strong> (defaults; owner-accepted):</li>
+</ul>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Setting</th>
+<th scope="col">Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SYSTEMAPI_FILE_MAX_SECONDS</code></td>
+<td>28800</td>
+</tr>
+<tr>
+<td><code>SYSTEMAPI_FILE_IDLE_SECONDS</code></td>
+<td>900</td>
+</tr>
+<tr>
+<td><code>SYSTEMAPI_FILE_MAX_BYTES</code></td>
+<td>16 GiB (one file)</td>
+</tr>
+<tr>
+<td><code>SYSTEMAPI_FILE_SESSION_BYTES</code></td>
+<td>64 GiB</td>
+</tr>
+<tr>
+<td><code>SYSTEMAPI_FILE_MAX_OPS</code></td>
+<td>100000</td>
+</tr>
+<tr>
+<td><code>SYSTEMAPI_FILE_MAX_PER_ACTOR</code></td>
+<td>4</td>
+</tr>
+</tbody>
+</table></div>
+<p>Fixed: <code>chunk_max</code> 1 MiB, <code>read_max</code> 8 MiB, <code>list_max</code> 1000. There are no
+  batch operations.
+- <strong>Per-agent cap.</strong> 16 live file sessions per agent, enforced by the server
+  and the agent. 2 of them are reserved for <code>file:root</code>: <code>file:read</code> and
+  <code>file:write</code> sessions get at most 14, so an admin can always reach a host
+  that operators have filled.
+- <strong>Roots the agent refuses.</strong> Whatever the policy says, a session other than
+  <code>file:root</code> is refused with <code>root_denied</code> when its root is <code>/</code> (also <code>"~"</code>
+  for an account whose home is unset or <code>/</code>) or contains the agent's state
+  directory (its identity seed and upload records), compared as given and
+  with symlinks resolved.</p>
+<h2 id="8-error-codes">8. Error codes</h2>
+<ul>
+<li><strong>Session errors</strong> (<code>file_status</code>):</li>
+</ul>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Code</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ticket_invalid</code></td>
+<td>The ticket is missing, used, expired, or for another host, purpose or root.</td>
+</tr>
+<tr>
+<td><code>scope_denied</code></td>
+<td>The caller lacks the scope for this purpose.</td>
+</tr>
+<tr>
+<td><code>agent_offline</code></td>
+<td>No live agent connection for the host.</td>
+</tr>
+<tr>
+<td><code>agent_unsupported</code></td>
+<td>The agent lacks file support, or the kernel has no <code>openat2</code>.</td>
+</tr>
+<tr>
+<td><code>lease_required</code></td>
+<td>No signer on the server.</td>
+</tr>
+<tr>
+<td><code>cap_reached</code></td>
+<td>A per-actor or per-agent cap is full.</td>
+</tr>
+<tr>
+<td><code>root_denied</code></td>
+<td>The server policy refuses the root, or the agent refuses it (§7: <code>/</code>, or a root holding its state directory, outside <code>file:root</code>).</td>
+</tr>
+<tr>
+<td><code>root_invalid</code></td>
+<td>The root contains a symlink, is missing, or is not a directory.</td>
+</tr>
+<tr>
+<td><code>pty_user_unset</code></td>
+<td>The agent has no <code>pty_user</code> to run as.</td>
+</tr>
+<tr>
+<td><code>account_unmapped</code></td>
+<td>The agent has a <code>--pty-user-map</code> and the actor has no entry in it.</td>
+</tr>
+<tr>
+<td><code>root_unavailable</code></td>
+<td><code>file:root</code> on an agent that cannot run as root.</td>
+</tr>
+<tr>
+<td><code>protocol_error</code></td>
+<td>The client broke a framing rule.</td>
+</tr>
+<tr>
+<td><code>internal</code></td>
+<td>Any other failure.</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>Operation errors</strong> (<code>file_result</code>; the session stays open):</li>
+</ul>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Code</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bad_request</code></td>
+<td>Unknown op, or malformed fields.</td>
+</tr>
+<tr>
+<td><code>bad_path</code></td>
+<td>The path breaks §5.1.</td>
+</tr>
+<tr>
+<td><code>reserved_name</code></td>
+<td>The path names a <code>.sahsync-*.part</code> file.</td>
+</tr>
+<tr>
+<td><code>not_found</code></td>
+<td>No such entry.</td>
+</tr>
+<tr>
+<td><code>not_a_file</code></td>
+<td>Not a regular file where one is required.</td>
+</tr>
+<tr>
+<td><code>not_a_dir</code></td>
+<td>Not a directory where one is required.</td>
+</tr>
+<tr>
+<td><code>exists</code></td>
+<td>The target exists and <code>overwrite</code> is false.</td>
+</tr>
+<tr>
+<td><code>not_empty</code></td>
+<td><code>remove</code> on a non-empty directory.</td>
+</tr>
+<tr>
+<td><code>symlink_refused</code></td>
+<td>A symlink was met during resolution.</td>
+</tr>
+<tr>
+<td><code>permission_denied</code></td>
+<td>The kernel refused for this identity.</td>
+</tr>
+<tr>
+<td><code>read_only</code></td>
+<td>A write op in a <code>file:read</code> session.</td>
+</tr>
+<tr>
+<td><code>too_large</code></td>
+<td>Over a size limit, or past the declared size.</td>
+</tr>
+<tr>
+<td><code>no_space</code></td>
+<td>The filesystem is full, or the actor already holds 16 live uploads under this root (§6).</td>
+</tr>
+<tr>
+<td><code>changed</code></td>
+<td><code>if_match</code> failed.</td>
+</tr>
+<tr>
+<td><code>sha256_mismatch</code></td>
+<td>The committed bytes do not match the declared hash.</td>
+</tr>
+<tr>
+<td><code>offset_mismatch</code></td>
+<td>A chunk did not start at the next expected offset.</td>
+</tr>
+<tr>
+<td><code>upload_not_found</code></td>
+<td>No such upload, or no open write.</td>
+</tr>
+<tr>
+<td><code>io_error</code></td>
+<td>Any other I/O failure.</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong><code>file_close</code> reasons:</strong></li>
+<li><code>idle_timeout</code></li>
+<li><code>max_duration</code></li>
+<li><code>byte_cap</code></li>
+<li><code>op_cap</code></li>
+<li><code>agent_disconnected</code></li>
+<li><code>stopped</code> (also: the grant was withdrawn at a renewal, §7, or the lease
+    lapsed at the agent)</li>
+<li><code>client_closed</code> (audit only)</li>
+</ul>
+<h2 id="9-audit-owner-decision-on-volume-2026-10-14">9. Audit (owner decision on volume, 2026-10-14)</h2>
+<p>Every column is hashed in the chain.</p>
+<ul>
+<li><strong><code>ticket_issued</code>:</strong> actor, host, purpose, root.</li>
+<li><strong><code>file_session_start</code>:</strong> <code>session_id</code>, purpose, the canonical root, user,
+  uid.</li>
+<li>It is written before <code>ready</code>. If the write fails, the result is
+    <code>internal</code>.</li>
+<li><strong>Mutating ops</strong> (<code>write_commit</code>, <code>mkdir</code>, <code>remove</code>) get FULL rows:</li>
+<li>an <strong>intent row</strong>, written before the op is forwarded: op, path, size, the
+    declared sha256. If that write fails, the op is refused with <code>internal</code>;</li>
+<li>a <strong>result row</strong>: op, path, size, sha256, result.</li>
+<li><code>write_open</code> and <code>write_abort</code> get one row each, including the
+    <code>upload_id</code>.</li>
+<li><strong>Reads</strong> are coalesced into <code>file_read</code> rows per path: path, bytes,
+  ranges count, and the last <code>hash</code> sha256 if one was taken. The rows are
+  flushed every 60 s, as soon as one path's unflushed bytes reach 1 GiB, and
+  at the session end; each flush resets the counters, so a long session has
+  several rows for one path and every byte is in exactly one of them.</li>
+<li><strong><code>stat</code> and <code>list</code></strong> get no individual rows. They are counted in
+  <code>file_session_end</code> (<code>stat_count</code> and <code>list_count</code>).</li>
+<li><strong><code>file_session_end</code>:</strong> reason, ops, <code>bytes_read</code>, <code>bytes_written</code>,
+  <code>stat_count</code>, <code>list_count</code>, <code>failed_reads</code> (<code>read</code> and <code>hash</code> results that
+  were errors, <code>permission_denied</code> say), <code>duration_s</code>. It follows every
+  <code>file_read</code> row of the session.</li>
+<li><strong>File content is not recorded.</strong> Path, size and sha256 identify exactly
+  what moved. Keeping a second copy of every file would be an unbounded
+  retention and breach liability.</li>
+</ul>
+<h2 id="10-threats">10. Threats</h2>
+<p><strong>Defended:</strong>
+- Traversal and absolute escape (§5.1).
+- Symlink escape and TOCTOU: everything resolves through held dirfds with
+  <code>RESOLVE_BENEATH|NO_SYMLINKS</code>.
+- A partial or corrupt file appearing at the target: temp file, fsync,
+  re-hash, then atomic rename.
+- A write through a read ticket: scope, ticket, lease and agent each check.
+- An operator doing a root file operation.
+- Operations running as the agent's own user.
+- A FIFO or device file hanging the agent.
+- Replayed tickets, or tickets for another host or purpose.
+- Memory blow-up: credit windows and caps.</p>
+<p><strong>Not defended:</strong>
+- What <code>pty_user</code> may legitimately read inside the root.
+- Hard links (§5.6).
+- Content inspection or DLP.
+- A concurrent writer on the host changing a file between <code>hash</code> and its use.</p>
+<h2 id="11-conformance">11. Conformance</h2>
+<p><strong>Client MUST:</strong>
+- send credentials in headers only, and use TLS 1.3;
+- wait for <code>ready</code>;
+- send one request at a time;
+- send relative paths only;
+- respect <code>write_window</code> and <code>chunk_max</code>;
+- declare size and sha256 before writing;
+- verify <code>prefix_sha256</code> before resuming;
+- verify sha256 after every download;
+- write locally to a temp file, then rename;
+- never overwrite a local file without <code>--force</code>.</p>
+<p><strong>Server MUST:</strong>
+- check scope, the root policy and the purpose at ticket issue and at the
+  upgrade;
+- consume the ticket on first use;
+- apply the Origin rule;
+- enforce sequencing;
+- write the session-start row before <code>ready</code>, and the intent rows before
+  mutations;
+- sign and renew the lease;
+- enforce every limit;
+- never drop bytes;
+- never log ticket values or file content.</p>
+<p><strong>Agent MUST:</strong>
+- verify the lease, including its mode and root;
+- run operations in the dropped-privilege helper;
+- resolve paths only as §5 says;
+- refuse every symlink;
+- write only through temp file, fsync, re-hash and rename;
+- clean up after an abort, and expire stale uploads.</p>
+<h2 id="12-tests-negative-cases-ship-with-phase-0">12. Tests (negative cases ship with phase 0)</h2>
+<ul>
+<li><code>../../etc/shadow</code>, <code>/etc/shadow</code>, <code>a/../../x</code>, <code>a//b</code> and <code>a/./b</code> give
+  <code>bad_path</code>.</li>
+<li>A symlink inside the root that points outside gives <code>symlink_refused</code>, for
+  reads and for writes.</li>
+<li>A symlinked root gives <code>root_invalid</code>.</li>
+<li>A FIFO gives <code>not_a_file</code>.</li>
+<li>A <code>file:read</code> ticket cannot write.</li>
+<li>A reused ticket fails.</li>
+<li>A host-A ticket cannot touch host B.</li>
+<li>A ticket for root <code>/srv/a</code> cannot reach <code>/srv/b</code>.</li>
+<li>A sha256 mismatch leaves nothing at the target and no temp file.</li>
+<li>A killed upload resumes at the right offset, and a wrong prefix is caught.</li>
+<li><code>overwrite:false</code> gives <code>exists</code>, with no race.</li>
+<li>A pipelined request gives <code>protocol_error</code>.</li>
+<li>An operator cannot get <code>file:root</code>.</li>
+</ul>
+<h2 id="13-owner-decisions-2026-10-14">13. Owner decisions (2026-10-14)</h2>
+<ul>
+<li><strong>Audit volume.</strong> Full rows for changes; reads coalesced per path;
+  <code>stat</code>/<code>list</code> counted only (§9).</li>
+<li><strong>File helper.</strong> Operations run in a child helper process with dropped
+  privileges.</li>
+<li><strong>Kernel.</strong> <code>openat2</code> is required, with no fallback.</li>
+<li><strong>Defaults.</strong> As listed in §7.</li>
+</ul>
+<h2 id="14-implementation-decisions-where-112-were-silent">14. Implementation decisions (where §1–§12 were silent)</h2>
+<ul>
+<li><strong>Request <code>type</code>.</strong> A request is either
+  <code>{"type":"file_request","request_id":...,"op":"&lt;op&gt;",...}</code> or names the op
+  in <code>type</code> itself: <code>{"type":"&lt;op&gt;","request_id":...}</code> (<code>op</code> then omitted or
+  equal to <code>type</code>). An <code>op</code> with any other <code>type</code> is a <code>protocol_error</code>; a
+  request that names no known op either way gets <code>bad_request</code>. A chunk
+  header is <code>{"type":"write_chunk",...}</code>.</li>
+<li><strong>Write <code>request_id</code> reuse.</strong> <code>write_open</code> opens a write under its
+  <code>request_id</code>. Its <code>write_chunk</code> headers, its <code>write_ack</code>s and its
+  <code>write_commit</code> or <code>write_abort</code> all carry that same id; this is the one
+  allowed reuse. While a write is open, any other request (a commit or abort
+  under another id included) is a <code>protocol_error</code>; with no write open, a
+  <code>write_commit</code> or <code>write_abort</code> gets <code>upload_not_found</code>.</li>
+<li><strong>Kept versus discarded temp files.</strong> As listed in §6 ("Kept or
+  discarded").</li>
+<li><strong>Exact <code>mtime_ns</code>.</strong> The server parses every integer literal of 16 or more
+  digits exactly and relays it with the same digits; the agent decodes it as
+  int64. A request the agent cannot decode but whose <code>request_id</code> it can
+  read is answered <code>bad_request</code> rather than dropped, so the session never
+  waits on it.</li>
+<li><strong>Default modes.</strong> A new file gets 0644 unless <code>mode</code> is given; an
+  overwritten regular file keeps its current mode unless <code>mode</code> is given. A
+  new directory gets 0755 unless <code>mode</code> is given. The helper runs with umask
+  0, so the mode is exact.</li>
+<li><strong><code>list</code>.</strong> Entries named <code>.sahsync-*.part</code> (the agent's temp files) and
+  names that are not valid UTF-8 (no request could address them, §5.1) are
+  left out.</li>
+<li><strong><code>list</code> cursor.</strong> <code>next_cursor</code> is the unpadded base64url encoding of the
+  last returned name; a request's <code>cursor</code> resumes after that name in
+  bytewise order. Clients treat it as opaque. It is at most 1024 characters.</li>
+<li><strong>Session caps.</strong> 16 file sessions per agent, 2 reserved for <code>file:root</code>
+  (§7), plus <code>SYSTEMAPI_FILE_MAX_PER_ACTOR</code>.</li>
+<li><strong>Upload cap.</strong> 16 live uploads per actor and root on the agent, <code>no_space</code>
+  past it (§6).</li>
+<li><strong>Audit action names.</strong> <code>ticket_issued</code>; <code>file_session_start</code>;
+  <code>file_intent</code> (the intent row before <code>write_commit</code>, <code>mkdir</code> and
+  <code>remove</code>); <code>file_op</code> (one row each for <code>write_open</code>, <code>write_commit</code>,
+  <code>write_abort</code>, <code>mkdir</code> and <code>remove</code>, with <code>result</code>); <code>file_read</code>;
+  <code>file_session_end</code>.</li>
+</ul></article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/transfer/file-protocol.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

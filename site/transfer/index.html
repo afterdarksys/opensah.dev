@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>File transfer for humans and agents | OpenSAH / dev</title><meta name="description" content="Choose the right tool, understand the delivery contract, and follow the evidence behind the performance work."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/transfer/index.html"><meta property="og:type" content="website"><meta property="og:title" content="File transfer for humans and agents"><meta property="og:description" content="Choose the right tool, understand the delivery contract, and follow the evidence behind the performance work."><meta property="og:url" content="https://opensah.dev/transfer/index.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Transfer documentation</p><h1>File transfer for humans and agents</h1><p>Choose the right tool, understand the delivery contract, and follow the evidence behind the performance work.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><a href="/index.html">Documentation home</a><a href="/api.html">Ecosystem API reference</a><strong>File transfer</strong><a href="/transfer/index.html" aria-current="page">Transfer overview</a><a href="/transfer/quickstart.html">Human & agent quickstarts</a><a href="/transfer/protocol.html">sahxfer wire protocol v1</a><a href="/transfer/api.html">Transfer API & lifecycle</a><a href="/transfer/compatibility.html">Compatibility & limits</a><a href="/transfer/security.html">Security & failure semantics</a><a href="/transfer/performance.html">Performance & measurements</a><a href="/transfer/roadmap.html">Experiments & streaming</a><a href="/transfer/sahsync.html">sahsync usage</a><a href="/transfer/paths.html">sahsync path rules</a><a href="/transfer/file-protocol.html">Agent file protocol</a></aside><article class="docs-content"><h2 id="two-tools-two-jobs">Two tools, two jobs</h2>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Need</th>
+<th scope="col">Tool</th>
+<th scope="col">Contract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Copy files or synchronize a directory tree through an enrolled host</td>
+<td>sahsync</td>
+<td>Sequential file operations over the SystemAPI agent WebSocket</td>
+</tr>
+<tr>
+<td>Transfer one large regular file on a separate encrypted data plane</td>
+<td>sahxfer</td>
+<td>One file, one direction, one grant; UDP in the CLI</td>
+</tr>
+<tr>
+<td>Continuous processed events with durable replay</td>
+<td>Proposed streaming extension</td>
+<td>Local storage prototype exists; no network stream service</td>
+</tr>
+</tbody>
+</table></div>
+<p>sahxfer separates permission from payload transport. SystemAPI authorizes the host, purpose, path, size, hash and lifetime. The peers then move encrypted bytes directly or through a relay. File bytes do not burden the agent's existing WebSocket. A relay forwards sealed datagrams without the file key.</p>
+<h2 id="start-here">Start here</h2>
+<ul>
+<li><a href="quickstart.html">Run a transfer or integrate an agent</a>.</li>
+<li><a href="protocol.html">Implement the v1 wire contract</a>, including packet layout, repair, cryptography and completion.</li>
+<li><a href="api.html">Understand the control API and helper lifecycle</a>.</li>
+<li><a href="compatibility.html">Check compatibility and limits</a> before choosing a transport or operating system.</li>
+<li><a href="security.html">Handle cancellation, retries and commit uncertainty</a>.</li>
+<li><a href="performance.html">Read the performance evidence</a> and <a href="roadmap.html">the experimental roadmap</a>.</li>
+<li><a href="sahsync.html">Use sahsync</a>, review <a href="paths.html">its path rules</a>, or read <a href="file-protocol.html">the agent file protocol</a>.</li>
+</ul>
+<h2 id="what-faster-means-here">What “faster” means here</h2>
+<p>The engineering work reduces allocation, batches socket operations, buffers source reads, repairs missing ranges, and paces packets with feedback. Encryption, file verification and commit remain part of the transfer. Report end-to-end goodput including preparation and durable commit, alongside transfer-only measurements.</p>
+<p>Local benchmarks show improvements over earlier sahxfer revisions. They do not establish superiority over SCP, SFTP, FTP or HTTPS, Internet fairness, or 10/25/100 Gbit/s performance. Those comparisons need equivalent workloads and security/durability settings.</p>
+<h2 id="implementation-is-not-deployment">Implementation is not deployment</h2>
+<p>The UDP engine and local grant-file workflow exist. The helper control interface also exists. This documentation does not certify a particular SystemAPI deployment or agent version as integrated. Check the deployed pair before using the HTTP grant workflow. QUIC is library-only in the current CLI; durable streaming is a separate proposed network contract.</p>
+<h2 id="documentation-baseline">Documentation baseline</h2>
+<p>Reviewed October 22, 2026 against the local sahxfer and sahsync sources. Full references include dated, downloadable source snapshots; <a href="sources.json">the source manifest</a> records revisions and content hashes. Some older server/design prose has stale availability statements. They are identified where reproduced, not treated as release guarantees.</p></article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/transfer/index.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

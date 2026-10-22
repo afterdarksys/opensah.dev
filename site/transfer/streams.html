@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Durable streams: prototype and proposed contract | OpenSAH / dev</title><meta name="description" content="The local storage prototype and proposed network contract, with explicit recovery and delivery semantics."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/transfer/streams.html"><meta property="og:type" content="website"><meta property="og:title" content="Durable streams: prototype and proposed contract"><meta property="og:description" content="The local storage prototype and proposed network contract, with explicit recovery and delivery semantics."><meta property="og:url" content="https://opensah.dev/transfer/streams.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Transfer documentation</p><h1>Durable streams: prototype and proposed contract</h1><p>The local storage prototype and proposed network contract, with explicit recovery and delivery semantics.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><a href="/index.html">Documentation home</a><a href="/api.html">Ecosystem API reference</a><strong>File transfer</strong><a href="/transfer/index.html">Transfer overview</a><a href="/transfer/quickstart.html">Human & agent quickstarts</a><a href="/transfer/protocol.html">sahxfer wire protocol v1</a><a href="/transfer/api.html">Transfer API & lifecycle</a><a href="/transfer/compatibility.html">Compatibility & limits</a><a href="/transfer/security.html">Security & failure semantics</a><a href="/transfer/performance.html">Performance & measurements</a><a href="/transfer/roadmap.html">Experiments & streaming</a><a href="/transfer/sahsync.html">sahsync usage</a><a href="/transfer/paths.html">sahsync path rules</a><a href="/transfer/file-protocol.html">Agent file protocol</a></aside><article class="docs-content"><p>Checked October 22, 2026. Source: <code>sahxfer/docs/durable-streams.md</code> at <code>30830a6b76fe</code>. <a href="/transfer/streams.md">Download the exact Markdown snapshot</a>.</p>
+<p>Status: local prototype only. No shipped network stream service or file-grant compatibility is implied.</p>
+<div class="toc">
+<ul>
+<li><a href="#durable-processed-event-streams-proposed-contract">Durable processed-event streams — proposed contract</a></li>
+<li><a href="#local-prototype-contract">Local prototype contract</a><ul>
+<li><a href="#prototype-on-disk-format-version-1">Prototype on-disk format (version 1)</a></li>
+<li><a href="#run-the-synthetic-producerconsumer-harness">Run the synthetic producer/consumer harness</a></li>
+<li><a href="#initial-validation-and-measurements">Initial validation and measurements</a></li>
+</ul>
+</li>
+<li><a href="#what-is-transferred">What is transferred</a></li>
+<li><a href="#identity-ordering-and-authorization">Identity, ordering, and authorization</a></li>
+<li><a href="#records-and-batching">Records and batching</a></li>
+<li><a href="#delivery-and-durability">Delivery and durability</a></li>
+<li><a href="#backpressure-quotas-and-concurrency">Backpressure, quotas, and concurrency</a></li>
+<li><a href="#audit-and-failure-semantics">Audit and failure semantics</a></li>
+<li><a href="#evaluation-references">Evaluation references</a></li>
+</ul>
+</div>
+<h2 id="durable-processed-event-streams-proposed-contract">Durable processed-event streams — proposed contract</h2>
+<p>Status: local storage prototype plus proposed network contract, 2026-10-22.
+Selected first streaming use case. Not wired into SystemAPI or the network, and
+not an extension silently accepted by
+v1 file grants. The release tracks and controls are in <code>platform-roadmap.md</code>.</p>
+<h2 id="local-prototype-contract">Local prototype contract</h2>
+<p><code>internal/streamlog</code> implements one locally authorized partition and one consumer.
+The operator supplies an existing private directory and opaque tenant, stream,
+partition and schema IDs. It uses safeio path confinement and an exclusive
+directory lock; a second writer is refused. This is not a stream grant validator.
+There is no network listener, privilege elevation, automatic token file, or
+at-rest encryption. Use synthetic data in the harness; production spools require
+the deployment controls in the roadmap.</p>
+<p>The log is append-only immutable segments, not an in-place WAL. Each segment has
+a versioned, bounded binary envelope, a previous-segment hash, an operation
+(fence, append, consumer checkpoint), and SHA-256 integrity. A fixed-size,
+checksummed checkpoint binds identity, segment count and chain head. Write
+segment through a 0600 temp, fsync, rename, fsync directory; then replace the
+checkpoint by the same sequence. Only then return a persisted receipt. Neither
+the checkpoint nor the hash chain is protection against a malicious local
+writer who can rewrite both; external signed anchors remain future work.</p>
+<p>Recovery validates every committed segment and sequence before returning a
+usable log. Missing/truncated/corrupt committed history fails closed. Bytes
+beyond the checkpoint are uncommitted: a segment at the next transaction number
+may be overwritten, and fixed staging names may be cleaned under the lock.
+Recovery never guesses an earlier checkpoint to hide corruption. After an I/O
+failure the handle is poisoned; close/reopen determines whether the transaction
+committed. An acknowledgment lost after checkpoint persistence is safe to retry.</p>
+<p>Fences strictly increase a producer epoch; new epochs restart record sequence at
+1. They are durable transactions; older epochs cannot append. Consumer cursors
+remain scoped to known epochs so retained records can finish after rollover.
+The caller must resolve any unpersisted old-producer outbox before authorizing
+rollover; this prototype cannot reconcile an unavailable producer's private outbox.
+An append batch is contiguous, all-new or an exact retry of a
+previously persisted range. Identical retries succeed without new writes;
+conflicting duplicates, mixed old/new batches, and sequence gaps are rejected.
+Empty payloads are allowed, empty batches are not. The schema is bound by the
+partition identity and payloads remain opaque. Replay takes an explicit epoch
+and sequence, returns bounded pages, and returns a gap for an unavailable range.
+One caller-declared processed cursor is durable per epoch; it cannot advance
+beyond persisted data or regress. The library does not execute business effects
+or claim that cursor persistence makes external effects exactly once.</p>
+<p>Hard parser ceilings: payload 1 MiB, batch 8 MiB, 1,024 records per batch,
+1,000,000 records and 1,000,000 transactions per log; configured quotas can be
+lower. Quotas cover committed encoded bytes, records, and transactions. One
+staged segment and a possible uncommitted next segment add at most two segment
+bounds plus two checkpoint bounds; fixed temp names prevent repeated failures
+from accumulating unique staging files. There is no retention eviction or
+compaction yet: capacity exhaustion rejects writes without deleting history.
+One metadata entry per retained record supports bounded replay and deduplication;
+recovery memory is proportional to configured record/transaction limits.</p>
+<p>The synchronous API accepts one bounded batch at a time. Successful append
+returns persisted state and checkpoint evidence, never processed state. Explicit
+consumer checkpoint returns processed state as declared by the caller. Segment
+operation metadata supplies durable local audit evidence; signed export,
+administrative access audit, tenant-wide quotas and audit outbox integration
+remain future work. No record payload is printed by the harness.</p>
+<h3 id="prototype-on-disk-format-version-1">Prototype on-disk format (version 1)</h3>
+<p>All integers are unsigned little-endian. This is a local format, not a network
+frame. Segment filenames are <code>segment-</code> followed by a zero-padded 20-digit
+transaction number, starting at 1. <code>checkpoint</code> is the only committed head.
+Fixed staging IDs are <code>xfr_stream_segment</code> and <code>xfr_stream_checkpoint</code> under
+safeio's reserved temp naming. Known initialization staging can be removed
+under the lock; a missing checkpoint with remaining history fails closed.</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Segment offset</th>
+<th scope="col">Bytes</th>
+<th scope="col">Field</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>8</td>
+<td>ASCII <code>SAHSLOG1</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td>1</td>
+<td>Operation: 1 fence, 2 append, 3 processed checkpoint</td>
+</tr>
+<tr>
+<td>9</td>
+<td>7</td>
+<td>Reserved, must be zero</td>
+</tr>
+<tr>
+<td>16</td>
+<td>8</td>
+<td>Transaction number</td>
+</tr>
+<tr>
+<td>24</td>
+<td>8</td>
+<td>Producer epoch</td>
+</tr>
+<tr>
+<td>32</td>
+<td>8</td>
+<td>First record sequence / processed sequence; zero for fence</td>
+</tr>
+<tr>
+<td>40</td>
+<td>4</td>
+<td>Record count; zero except append</td>
+</tr>
+<tr>
+<td>44</td>
+<td>4</td>
+<td>Encoded body length</td>
+</tr>
+<tr>
+<td>48</td>
+<td>32</td>
+<td>Previous segment SHA-256; zero for the first segment</td>
+</tr>
+<tr>
+<td>80</td>
+<td>variable</td>
+<td>Append records: u32 payload length then payload, repeated</td>
+</tr>
+<tr>
+<td>end minus 32</td>
+<td>32</td>
+<td>SHA-256 of every preceding segment byte</td>
+</tr>
+</tbody>
+</table></div>
+<p>The 112-byte checkpoint is magic <code>SAHSCPT1</code> (8), identity digest (32),
+transaction count (8), chain head (32), and SHA-256 of the first 80 bytes (32).
+Identity digest is SHA-256 over <code>sahxfer-stream-identity-v1\n</code> followed by tenant,
+stream, partition and schema in that order, each encoded as u32 byte length and
+UTF-8 bytes. IDs are nonempty, at most 128 bytes, valid UTF-8, without ASCII
+control characters; no Unicode normalization is performed. Quotas are operator
+configuration and are checked again during recovery, not silently raised.</p>
+<p><code>Open</code> syncs the recovered directory before returning, covering process death
+after a visible checkpoint rename but before its directory sync. Process-exit
+tests do not simulate power-loss ordering or storage devices ignoring fsync.
+All writers must honor the advisory lock; this is not a distributed lease.
+Quotas cover this store's committed segments, not arbitrary unrelated files in
+the operator-supplied directory. No compaction or outbox eviction ships yet.</p>
+<h3 id="run-the-synthetic-producerconsumer-harness">Run the synthetic producer/consumer harness</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code class="language-sh">go run ./cmd/streamlab -records 1024 -record-bytes 4096 -batch 64
+go test ./internal/streamlog ./cmd/streamlab
+go test -race ./internal/streamlog ./internal/safeio ./cmd/streamlab
+go test ./internal/streamlog -run '^$' -fuzz '^FuzzRecoveryParser$' -fuzztime=10s -parallel=2
+go test ./internal/streamlog -run '^$' -bench BenchmarkDurableAppend -benchtime=3x -count=3
+</code></pre></div>
+<p>The harness creates and removes private temporary outbox/sink directories,
+generates synthetic bytes, simulates a lost persisted acknowledgment and a
+consumer restart before processed-checkpoint persistence, and verifies all
+payloads after replay. It prints counts and timing, never record contents.
+<code>replayed_records</code> includes deliberate redelivery. Consumer verification is a
+synthetic idempotent operation, not exactly-once external side effects. Unit
+tests additionally terminate subprocesses at each persistence barrier,
+bypassing all deferred cleanup.</p>
+<h3 id="initial-validation-and-measurements">Initial validation and measurements</h3>
+<p>The full repository suite passed on Darwin amd64 and Linux, including the
+existing file-protocol fail-closed cases. Race checks passed for streamlog,
+safeio and streamlab, including the final producer/consumer rollover correction.
+<code>go vet ./...</code> passed. A 10-second, two-worker parser fuzz run completed 637,776
+executions without failure. The parser also has direct tests for re-signed
+invalid fields and an oversized encoded payload length.</p>
+<p>On Darwin amd64, Intel i9-9880H, Go 1.27.3, three runs of three appends each,
+4 KiB per record, produced these local durable-append results:</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Records per batch</th>
+<th scope="col">Payload per batch</th>
+<th scope="col">Mean time per append across runs</th>
+<th scope="col">Goodput</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>4 KiB</td>
+<td>40.5–41.1 ms</td>
+<td>0.10 MB/s</td>
+</tr>
+<tr>
+<td>64</td>
+<td>256 KiB</td>
+<td>43.8–44.7 ms</td>
+<td>5.86–5.98 MB/s</td>
+</tr>
+<tr>
+<td>256</td>
+<td>1 MiB</td>
+<td>52.6–54.6 ms</td>
+<td>19.21–19.94 MB/s</td>
+</tr>
+</tbody>
+</table></div>
+<p>These include segment and checkpoint file/directory persistence and exclude
+initial store creation, fencing, replay and networking. They are small-sample
+local measurements, not p99 latency, replicated durability, or a comparison
+against an established streaming service. The benchmark demonstrates durability
+cost and batching tradeoffs; it does not establish low-latency financial-feed
+suitability. The 1,024-record synthetic harness also stores an outbox, checkpoints
+consumer progress, reopens stores, and deliberately redelivers records, so its
+runtime is not the append-only throughput figure above.</p>
+<p>Remaining before network release: stream grants and consumer authorization,
+network framing/credit, reconnect session keys, retention/compaction and outbox
+eviction, replication, encrypted spool deployment, signed audit export, and
+crash/power-loss testing on supported production storage. Future analytics and
+bulk AI release tracks remain in <code>platform-roadmap.md</code>.</p>
+<h2 id="what-is-transferred">What is transferred</h2>
+<p>Processed financial events, features, or structured data batches from one
+authorized producer to one authorized durable sink initially. This is not an
+exchange order-entry protocol, a matching engine, or a global transaction log.
+Fan-out and replicated durability are later explicit extensions. Existing files
+remain one-file grants with size/hash/rename completion.</p>
+<p>Streams are finite-lived sessions over potentially unbounded logical datasets.
+Each session has grant expiry/renewal, bounded bytes and duration, and fresh key
+material. No nonce space or permission survives indefinitely across reconnects.
+The control plane grants access and audits it; payloads stay off the WebSocket.</p>
+<h2 id="identity-ordering-and-authorization">Identity, ordering, and authorization</h2>
+<p>Logical record identity is <code>(tenant, stream, partition, producer_epoch, sequence)</code>.
+The control plane fences producer epochs; old epochs cannot append after a
+replacement is authorized. Sequence is monotonically increasing per partition.
+No global order across partitions is promised. Event time and ingestion time are
+distinct metadata; neither replaces sequence for delivery correctness.</p>
+<p>A new stream-specific grant must bind tenant, resource/partition, producer or
+consumer identity, purpose, epoch, transport, schema policy, payload/record caps,
+duration, acknowledgment policy, and replay range/retention permissions.
+File grants must be rejected for stream operations and vice versa. Subscribe
+and replay are distinct permissions. The exact envelope/wire encoding and
+lease vectors need review before implementation. Do not invent compatibility by
+repurposing a v1 DATA flag, file offset, or DONE hash.</p>
+<h2 id="records-and-batching">Records and batching</h2>
+<p>A record/batch envelope carries version, partition identity, epoch, sequence or
+bounded sequence range, schema identifier/version, encoding, bounded payload
+length, and event-time metadata when meaningful. Explicitly define empty records,
+fragmentation/reassembly limits, oversized-record rejection, numeric overflow,
+and schema mismatch before implementing the parser. No unbounded allocation
+from a declared length. Reject unknown mandatory fields and unsupported versions.</p>
+<p>Support opaque application bytes initially; evaluate Arrow IPC record batches
+for typed analytics. Payloads are never interpreted as commands or model code.
+Batch by both byte limit and maximum age so a throughput optimization cannot
+starve a low-volume stream. Publish the batch settings with latency measurements.</p>
+<p>Separate transport packet sequence (nonce and replay protection) from durable
+record sequence. Re-sending a record always uses a fresh packet nonce. Source
+bytes for a given record identity are immutable; conflicting duplicate content
+is an error. Content identity uses a cryptographic digest, never xxHash alone.</p>
+<h2 id="delivery-and-durability">Delivery and durability</h2>
+<p>Expose three distinct states: received/authenticated, persisted, and application
+processed. Network feedback controls packet delivery and does not certify disk
+durability or downstream processing.</p>
+<p>The initial promise is at-least-once delivery within the authorized retention
+window, with stable record IDs for idempotent consumers. A durable acknowledgment
+names the highest contiguous persisted sequence in a partition plus its epoch.
+It is issued only after data and the relevant checkpoint are recoverably durable.
+Specify local fsync versus replicated quorum explicitly; initial prototype
+durability is local disk only and does not survive loss of that disk/node.</p>
+<p>On crash after persist but before acknowledgment, replay may redeliver the
+record. Deduplication state must recover consistently with the stored records.
+Do not acknowledge across a missing sequence. If old content has expired,
+return an explicit gap with the earliest available position. The consumer must
+request a permitted snapshot/recovery action; it never silently skips ahead.</p>
+<p>The producer retains a bounded durable outbox until persisted acknowledgment.
+The sink maintains a durable append log and checkpoint. Recovery validates
+record framing/integrity, truncates only an uncommitted torn tail, and reports
+corruption in committed history. All spool and recovery paths require the same
+confinement, privilege separation, quotas, and at-rest policy as other data.</p>
+<p>Exactly-once application side effects are not provided by network acknowledgments.
+A consumer needs an idempotent operation or a transaction that commits its
+side effect and consumer position together. The platform must not mislabel a
+transport-level duplicate filter as exactly-once business processing.</p>
+<h2 id="backpressure-quotas-and-concurrency">Backpressure, quotas, and concurrency</h2>
+<p>Receiver credit covers bounded unpersisted bytes and records; congestion control
+separately covers network capacity. Persist completion replenishes durable-input
+credit. A stalled disk cannot create unlimited memory queues or optimistic ACKs.
+Reserve bounded capacity for acknowledgment, renewal, cancellation, and errors.</p>
+<p>Bound every queue and spool by bytes and entries. Quotas apply per tenant and
+stream plus a global admission ceiling. If a durable consumer falls behind the
+retention budget, block/reject according to policy or report explicit loss of
+replay coverage; do not evict required records silently. Legal holds and deletion
+requirements must have explicit policy precedence and operator visibility.</p>
+<p>Parallelize across partitions with one ordering owner per partition. Share path
+congestion budgets and schedule fairly across grants. Worker pools can perform
+disk/crypto jobs but cannot independently assign packet nonces or commit stream
+positions. Reconnects obtain fresh session material and authenticate their
+requested cursor. Bounded replay cannot turn a grant into an unlimited read.</p>
+<h2 id="audit-and-failure-semantics">Audit and failure semantics</h2>
+<p>Link grant intent to durable checkpoint evidence and result/termination events.
+Record actor, policy version, opaque resource IDs, epoch/sequence ranges, unique
+record/byte counts, and reason codes. Never place payloads, patient/account
+identifiers, secrets, or unrestricted user metadata in logs. Audit export access
+is tenant-scoped and audited itself. Checkpoint audit records should participate
+in the durable outbox, with idempotent export and a bounded outage policy.</p>
+<p>Required scenarios before release: tampered records; expired/wrong-purpose/wrong-
+tenant grants; old epochs; duplicate IDs with different content; missing ranges;
+sequence/length overflow; revoked replay permission; source/sink crash at each
+durability barrier; disk full; truncated tail; corrupted committed history;
+slow consumer; reconnect; replay outside retention; cancellation; audit sink
+failure; and fresh keys/nonces on every session replacement.</p>
+<h2 id="evaluation-references">Evaluation references</h2>
+<p><a href="https://arrow.apache.org/docs/format/Flight.html">Arrow Flight</a> organizes data
+exchange around Arrow record-batch streams. It is a format/API comparator for
+structured data, not proof this transport needs to replace gRPC.
+<a href="https://docs.nats.io/concepts/jetstream">JetStream</a> supplies persistence, replay,
+and consumer delivery tracking. Compare equal durability policies. Reuse an
+established log service if it satisfies the workload; a custom log needs a
+demonstrated advantage and independent recovery/security review.</p></article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/transfer/streams.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

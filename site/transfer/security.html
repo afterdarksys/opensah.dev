@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Security, failures and verified completion | OpenSAH / dev</title><meta name="description" content="Authorization, encrypted transport and file publication are separate obligations."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/transfer/security.html"><meta property="og:type" content="website"><meta property="og:title" content="Security, failures and verified completion"><meta property="og:description" content="Authorization, encrypted transport and file publication are separate obligations."><meta property="og:url" content="https://opensah.dev/transfer/security.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Transfer documentation</p><h1>Security, failures and verified completion</h1><p>Authorization, encrypted transport and file publication are separate obligations.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><a href="/index.html">Documentation home</a><a href="/api.html">Ecosystem API reference</a><strong>File transfer</strong><a href="/transfer/index.html">Transfer overview</a><a href="/transfer/quickstart.html">Human & agent quickstarts</a><a href="/transfer/protocol.html">sahxfer wire protocol v1</a><a href="/transfer/api.html">Transfer API & lifecycle</a><a href="/transfer/compatibility.html">Compatibility & limits</a><a href="/transfer/security.html" aria-current="page">Security & failure semantics</a><a href="/transfer/performance.html">Performance & measurements</a><a href="/transfer/roadmap.html">Experiments & streaming</a><a href="/transfer/sahsync.html">sahsync usage</a><a href="/transfer/paths.html">sahsync path rules</a><a href="/transfer/file-protocol.html">Agent file protocol</a></aside><article class="docs-content"><h2 id="authorization-and-confidentiality">Authorization and confidentiality</h2>
+<p>A grant binds host, purpose, path, size, hash and limits. The helper trusts the agent to verify the signed lease and spawn it under the authorized identity. Client validation does not replace host confinement or server policy. Root transfer requires separate authorization.</p>
+<p>The v1 packet uses ChaCha20-Poly1305, with the header authenticated as associated data. Sequence numbers are direction-specific and cannot be reused with a key. Repairs get fresh sequences. A listening peer pins a source only after authenticating its packet. Relays see routing and traffic metadata but do not possess the file key.</p>
+<p>Never log credentials, grant keys, route tokens or file contents. Bootstrap grant files require owner-only permissions. Transport encryption does not encrypt a destination file or a local spool at rest.</p>
+<h2 id="completion-is-more-than-bytes-sent">Completion is more than bytes sent</h2>
+<p>The receiver must have all ranges, verify the file hash, and perform the required filesystem commit before reporting DONE. The sender checks the DONE size/hash against the grant. <code>active</code>, progress counters and FIN are not successful completion. For helper integration, distinguish a terminal <code>committed</code> result from an in-flight event.</p>
+<p>A receiver can commit even if the closing acknowledgment is lost. A sender-side timeout therefore does not prove that the destination was unchanged. Reconcile the result and destination before retrying with overwrite. Do not manufacture a successful result when evidence is missing.</p>
+<h2 id="failure-behavior">Failure behavior</h2>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Event</th>
+<th scope="col">Expected behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hash mismatch or incomplete ranges</td>
+<td>No successful commit</td>
+</tr>
+<tr>
+<td>Expired lease, cancel or control-pipe EOF before commit</td>
+<td>Abort and clean up the temporary file</td>
+</tr>
+<tr>
+<td>Cancellation after commit</td>
+<td>Does not undo the published file</td>
+</tr>
+<tr>
+<td>ABORT or exhausted lifetime</td>
+<td>Grant ends; later data cannot revive it</td>
+</tr>
+<tr>
+<td>Restart after failure</td>
+<td>New grant, offset zero; v1 has no resume</td>
+</tr>
+<tr>
+<td>Machine/process crash</td>
+<td>Do not assume deferred cleanup ran; use the narrowly scoped helper sweep procedure where appropriate</td>
+</tr>
+</tbody>
+</table></div>
+<p>The helper sweep targets only the named grant's temporary file. It is not a general deletion API. Filesystem power-loss guarantees require testing on the deployment's actual storage; loopback tests cannot establish them.</p>
+<h2 id="human-intent-and-agent-execution">Human intent and agent execution</h2>
+<p>Keep transfer authority separate from permission to execute or ingest the result. Untrusted data stays data. An automation client should preserve the grant ID, final status and verified file identity, and pass those to a separately authorized processing step. No v1 transfer event proves that downstream business processing happened.</p>
+<p>The client does not write the SystemAPI audit chain. The server and agent must retain their own authorization and result evidence. A local stderr audit line is not that chain.</p>
+<h2 id="protocol-references">Protocol references</h2>
+<p>Read <a href="protocol.html">sahxfer v1</a> for nonce/replay rules, close semantics and ABORT codes; <a href="file-protocol.html">the agent file protocol</a> for sahsync sessions; and <a href="roadmap.html">the streaming roadmap</a> for the separate received, persisted and processed states proposed for streams.</p></article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/transfer/security.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

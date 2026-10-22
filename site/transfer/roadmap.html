@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Experiments and the streaming roadmap | OpenSAH / dev</title><meta name="description" content="A measured file-transfer baseline, a local durable-log prototype, and explicitly separate future network contracts."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/transfer/roadmap.html"><meta property="og:type" content="website"><meta property="og:title" content="Experiments and the streaming roadmap"><meta property="og:description" content="A measured file-transfer baseline, a local durable-log prototype, and explicitly separate future network contracts."><meta property="og:url" content="https://opensah.dev/transfer/roadmap.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Transfer documentation</p><h1>Experiments and the streaming roadmap</h1><p>A measured file-transfer baseline, a local durable-log prototype, and explicitly separate future network contracts.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><a href="/index.html">Documentation home</a><a href="/api.html">Ecosystem API reference</a><strong>File transfer</strong><a href="/transfer/index.html">Transfer overview</a><a href="/transfer/quickstart.html">Human & agent quickstarts</a><a href="/transfer/protocol.html">sahxfer wire protocol v1</a><a href="/transfer/api.html">Transfer API & lifecycle</a><a href="/transfer/compatibility.html">Compatibility & limits</a><a href="/transfer/security.html">Security & failure semantics</a><a href="/transfer/performance.html">Performance & measurements</a><a href="/transfer/roadmap.html" aria-current="page">Experiments & streaming</a><a href="/transfer/sahsync.html">sahsync usage</a><a href="/transfer/paths.html">sahsync path rules</a><a href="/transfer/file-protocol.html">Agent file protocol</a></aside><article class="docs-content"><h2 id="implemented-baseline">Implemented baseline</h2>
+<p>The v1 CLI transfers one granted file over encrypted UDP. Performance work includes bounded source read-ahead, packet-buffer reuse, reusable crypto scratch and socket batching. <code>put --pipeline-source</code> is an opt-in experiment; current local measurements do not establish a meaningful end-to-end gain from enabling it. See <a href="performance.html">the measurements</a>.</p>
+<h2 id="research-not-negotiated-v1-features">Research, not negotiated v1 features</h2>
+<p>Content-defined chunking, authenticated chunk manifests, alternative cryptographic file hashes, verified resume, compression, MTU negotiation and deeper disk/crypto pipelines need separately specified and tested contracts. Do not add an undocumented DATA flag or silently change a grant digest. A non-cryptographic lookup hash cannot authorize content reuse.</p>
+<p>Optimizations must keep bounded queues, explicit buffer ownership, unique nonces, authenticated bytes, hash verification and commit. Shared-link fairness and storage bottlenecks matter alongside goodput.</p>
+<h2 id="durable-processed-events-local-prototype">Durable processed events: local prototype</h2>
+<p>A local streamlog library and synthetic streamlab harness exist. They exercise immutable segments, checkpoints, producer epochs, exact retry deduplication, bounded replay and distinct persisted/processed cursors. They have no network listener, stream grants, replication or retention eviction. The prototype stores plaintext locally.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code class="language-sh"># From the sahxfer repository; synthetic local data only.
+go run ./cmd/streamlab -records 1024 -record-bytes 4096 -batch 64
+</code></pre></div>
+<p>The proposed network service needs its own grants, consumer authorization, framing, credit, reconnect keys and replay policy. v1 file grants do not authorize streams. A transport receipt is not an exactly-once business effect.</p>
+<h2 id="release-tracks">Release tracks</h2>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Track</th>
+<th scope="col">Delivery goal</th>
+<th scope="col">State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Single files</td>
+<td>Verified content and explicit commit</td>
+<td>Implemented baseline; deployment integration must be checked</td>
+</tr>
+<tr>
+<td>Durable processed events</td>
+<td>Ordered partitions, persisted acknowledgments, replay and explicit gaps</td>
+<td>Local storage prototype; network integration proposed</td>
+</tr>
+<tr>
+<td>Fresh-update analytics</td>
+<td>Explicit supersession, bounded staleness and snapshot recovery</td>
+<td>Future track</td>
+</tr>
+<tr>
+<td>AI datasets/checkpoints</td>
+<td>Versioned manifests, verified resume and atomic dataset publication</td>
+<td>Future track; single files already supported</td>
+</tr>
+</tbody>
+</table></div>
+<p>Before a network streaming release: specify authorization and recovery; test crash boundaries and corrupted history; bound spools and queues; define retention and disk-full behavior; validate cancellation and fresh keys on reconnect. Production deployment also needs storage protection and operational evidence appropriate to the workload.</p>
+<p><a href="streams.html">Read the complete local prototype and proposed streaming contract</a>. Release dates and performance SLOs are not established here.</p></article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/transfer/roadmap.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>sahxfer wire protocol v1 | OpenSAH / dev</title><meta name="description" content="The complete v1 peer contract: grants, packet layout, encryption, repair, close and limits."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/transfer/protocol.html"><meta property="og:type" content="website"><meta property="og:title" content="sahxfer wire protocol v1"><meta property="og:description" content="The complete v1 peer contract: grants, packet layout, encryption, repair, close and limits."><meta property="og:url" content="https://opensah.dev/transfer/protocol.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Transfer documentation</p><h1>sahxfer wire protocol v1</h1><p>The complete v1 peer contract: grants, packet layout, encryption, repair, close and limits.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><a href="/index.html">Documentation home</a><a href="/api.html">Ecosystem API reference</a><strong>File transfer</strong><a href="/transfer/index.html">Transfer overview</a><a href="/transfer/quickstart.html">Human & agent quickstarts</a><a href="/transfer/protocol.html" aria-current="page">sahxfer wire protocol v1</a><a href="/transfer/api.html">Transfer API & lifecycle</a><a href="/transfer/compatibility.html">Compatibility & limits</a><a href="/transfer/security.html">Security & failure semantics</a><a href="/transfer/performance.html">Performance & measurements</a><a href="/transfer/roadmap.html">Experiments & streaming</a><a href="/transfer/sahsync.html">sahsync usage</a><a href="/transfer/paths.html">sahsync path rules</a><a href="/transfer/file-protocol.html">Agent file protocol</a></aside><article class="docs-content"><p>Checked October 22, 2026. Source: <code>sahxfer/PROTOCOL.md</code> at <code>30830a6b76fe</code>. <a href="/transfer/protocol.md">Download the exact Markdown snapshot</a>.</p>
+<p>This is a protocol snapshot, not proof of server deployment. Relative repository references lead to the source revision; helper messages are specified here in full.</p>
+<div class="toc">
+<ul>
+<li><a href="#sahxfer-protocol">sahxfer protocol</a></li>
+<li><a href="#1-grant">1. Grant</a><ul>
+<li><a href="#11-host-helper-recv-agent-mode">1.1 Host helper (recv agent mode)</a></li>
+</ul>
+</li>
+<li><a href="#2-datagram">2. Datagram</a></li>
+<li><a href="#3-aead">3. AEAD</a></li>
+<li><a href="#4-types">4. Types</a><ul>
+<li><a href="#41-nack">4.1 NACK</a></li>
+<li><a href="#42-feedback">4.2 FEEDBACK</a></li>
+<li><a href="#43-close">4.3 Close</a></li>
+<li><a href="#44-abort">4.4 ABORT</a></li>
+<li><a href="#45-zero">4.5 ZERO</a></li>
+</ul>
+</li>
+<li><a href="#5-reliability">5. Reliability</a></li>
+<li><a href="#6-relay">6. Relay</a></li>
+<li><a href="#7-quic">7. QUIC</a></li>
+<li><a href="#8-limits">8. Limits</a></li>
+<li><a href="#9-out-of-v1">9. Out of v1</a></li>
+</ul>
+</div>
+<h2 id="sahxfer-protocol">sahxfer protocol</h2>
+<p>Version 1. One grant moves one regular file in one direction. SAH authorizes the grant. The file bytes travel in sealed datagrams, not on the agent WebSocket.</p>
+<p><code>docs/design.md</code> is the working spec. This file is the wire protocol a peer implements. Congestion in this repository is pace-bbr, a tested subset of the BBRv3 shape, not a byte-identical BBRv3. The portable I/O path is <code>pread</code> / <code>pwrite</code>. The CLI speaks UDP. <code>internal/quic</code> implements the QUIC pipe. The CLI does not call it, and a QUIC grant still returns <code>agent_unsupported</code>.</p>
+<p>The local <code>put --pipeline-source</code> experiment overlaps source reads with packet
+processing using two bounded buffers. It requires no peer negotiation and
+changes no grant, frame, digest, pacing, or completion rules. It is off by default;
+receiver writes and verification remain synchronous.</p>
+<p>UDP's local returned-buffer cache and reusable nonce scratch do not change the
+wire format or delivery semantics. Packet sequence remains direction-specific
+and never reused under a key. Streaming processed events requires a separate
+grant and protocol contract; the network contract in <code>docs/durable-streams.md</code>
+remains proposed and does not authorize v1 file grants for live streams. The local <code>streamlog</code>
+prototype and <code>streamlab</code> harness exercise storage/replay only; their segment
+format is not a data-plane frame or a replacement for stream authorization.</p>
+<h2 id="1-grant">1. Grant</h2>
+<p>The client sends one credential in a header. <code>Authorization: Bearer</code> carries the sahconnect device-login token, and only when that token is bound to the request origin. <code>X-API-Key</code> is the other credential. The two are not sent together. Credentials never appear in a query string or in a UDP field.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>GET /api/v1/hosts/resolve?name=&lt;host&gt;
+POST /api/v1/xfer/grant
+</code></pre></div>
+<p>The grant request names <code>host_id</code>, <code>purpose</code> (<code>xfer:put</code>, <code>xfer:get</code>, or <code>xfer:root</code>), <code>dir</code> (<code>put</code> or <code>get</code>), absolute <code>root</code>, relative <code>path</code>, <code>size</code>, <code>sha256</code>, <code>overwrite</code>, and a requested <code>transport</code>. <code>size</code> is a byte count from 0 through <code>2^63-1</code>. A larger value is <code>too_large</code>. Size 0 is an empty file.</p>
+<p>The response carries <code>grant_id</code>, <code>transfer_id</code> (64-bit demux id, not a secret), <code>expires_at</code> (the first-packet deadline, issue plus <code>expires_in</code>), idle, max (the hard stop is issue plus <code>max_seconds</code>, at most 3600 s), <code>byte_cap</code>, the path and hash the client asked for, <code>profile</code> (<code>internet</code> or <code>dc</code>), the chosen <code>transport</code>, <code>peer.udp</code> and <code>peer.quic</code>, <code>aead</code> (<code>ChaCha20-Poly1305</code>), a 32-byte <code>key</code>, and a 16-byte <code>route_token</code>. Both secrets come from the OS CSPRNG. The client checks host, purpose, root, path, size, and hash before it sends a packet.</p>
+<p><code>profile</code> and <code>transport</code> are server choices. The client cannot select <code>dc</code> or turn the cipher off. An unknown transport is <code>mismatch</code> in this repository's client.</p>
+<p>The same key, route token, transfer id, path, size, and hash are delivered to the host agent on its existing channel, under a <code>systemapi-lease-v1</code> lease the agent verifies. The lease payload is 18 lines (<code>docs/design.md</code> §3.4): grant id, deadline, <code>start</code> or <code>renew</code>, <code>put</code> or <code>get</code>, root, path, size, sha256, overwrite, transfer id, first-packet deadline, idle, max, byte cap, profile, transport, peer mode, and the hex of <code>sha256("sahxfer-material-v1\n" || key || route_token)</code>. <code>docs/golden-xfer-lease-v2.txt</code> is the shared vector. The peer mode is <code>listen</code> (the host binds and <code>peer.udp</code> is the address it reported) or <code>dial:&lt;host:port&gt;</code> (the host dials a relay, which is <code>peer.udp</code>). <code>peer.udp</code> is always where the client sends. A listening host pins the first source whose datagram opens, never an unauthenticated one. The server that issues the grant is not in this repository. <code>sahxfer grant</code> can write a mode-0600 bootstrap file so two local processes can run the data plane. A grant that arrived over HTTPS stays in memory.</p>
+<p>The receiver reports the result to the server: the agent for <code>put</code>. The client does not report a put. <code>xfer:put</code> is client to host. <code>xfer:get</code> swaps the peers: the agent sends, the client receives. One grant is one file. A failed transfer deletes the temp and a new grant starts at offset 0.</p>
+<h3 id="11-host-helper-recv-agent-mode">1.1 Host helper (<code>recv</code> agent mode)</h3>
+<p>The agent verifies the lease, then spawns <code>sahxfer recv --ctl-fd 3 --event-fd 4</code> as the identity user with only fds 0 to 4 open. The key travels only on fd 3. Never argv, never env, never disk.</p>
+<p>Fd 3, agent to recv, one JSON object per line. The first line is the grant: <code>v</code> (1), <code>grant_id</code>, <code>transfer_id</code>, <code>purpose</code>, <code>dir</code>, <code>root</code>, <code>path</code>, <code>size</code>, <code>sha256</code>, <code>overwrite</code>, <code>profile</code>, <code>transport</code>, <code>aead</code>, <code>key</code>, <code>route_token</code>, <code>expires_unix</code> (first-packet deadline), <code>deadline_unix</code> (lease deadline), <code>idle_s</code>, <code>max_s</code>, <code>byte_cap</code>, <code>peer</code> (<code>listen:&lt;ip:port&gt;</code> to bind, port 0 for ephemeral, or <code>dial:&lt;host:port&gt;</code>). Unknown fields are refused; the line is capped at 64 KiB and then checked like any grant. The hard stop is the earlier of <code>deadline_unix - 60 + max_s</code> and now plus <code>max_s</code>. Later lines carry exactly the keys of their op: <code>{"op":"renew","deadline_unix":&lt;n&gt;}</code> and <code>{"op":"cancel","reason":"&lt;code&gt;"}</code> (<code>reason</code> optional). A deadline only moves forward; a renew that does not is refused with <code>{"ev":"refused","op":"renew","reason":"deadline_not_forward"}</code> on fd 4 and the old deadline stays. EOF is cancel with reason <code>stopped</code>. Any other line, or an extra key, stops the run with reason <code>protocol</code>. Fds 3 and 4 must be a pipe or a socket. recv waits at most 10 s for the grant line; a signal ends the wait at once.</p>
+<p>Fd 4, recv to agent: <code>{"ev":"ready","udp":"&lt;bound addr&gt;","rcvbuf":&lt;n&gt;}</code> (<code>udp</code> only when listening; <code>rcvbuf</code> is the granted <code>SO_RCVBUF</code> as <code>getsockopt</code> reports it, which on Linux is twice the usable size, <code>docs/design.md</code> §7.4), <code>{"ev":"active","bytes":&lt;n&gt;}</code> on the first authentic packet and then at most once a second, and last <code>{"ev":"result","grant_id","transfer_id","status","reason","bytes","sha256","committed"}</code>. <code>status</code> is <code>ok</code>, <code>hash_mismatch</code>, <code>aborted</code>, <code>expired</code>, or <code>io_error</code>. <code>reason</code> is an ABORT name (§4.4), <code>stopped</code>, or, for a refusal before <code>ready</code>, the local code (<code>exists</code>, <code>symlink_refused</code>, <code>not_a_file</code>, <code>bad_path</code>, <code>no_space</code>). <code>sha256</code> is present only when <code>committed</code> is true. A commit is <code>ok</code> even if <code>CLOSE_ACK</code> never came. A grant line that does not arrive or does not decode produces one <code>{"ev":"result","status":"aborted","reason":"&lt;code&gt;","committed":false}</code>, without <code>grant_id</code> or <code>transfer_id</code>, and the code on stderr (<code>bad_grant</code> for a line that never came, <code>cancelled</code> for a signal).</p>
+<p>A cancel, EOF, or lapsed lease sends one <code>ABORT cancelled</code> to the peer, deletes the temp, and reports the reason (<code>expired</code> for a lapsed lease). After the commit it sends nothing: the target is final, and the result is <code>ok</code>. Stdout and stderr are unchanged: three lines on success, one code on failure.</p>
+<p><code>recv --sweep --ctl-fd 3</code> reads one line <code>{"root","path","grant_id"}</code> and removes only <code>.sahxfer-&lt;grant_id&gt;.part</code> in the parent of <code>path</code>.</p>
+<h2 id="2-datagram">2. Datagram</h2>
+<p>One UDP datagram is one frame. There is no segmentation under the datagram. A frame that does not fit is not sent.</p>
+<p>The first four bytes are <code>53 41 48 58</code> (<code>SAHX</code>). Every later integer is little-endian. Version, type, and flags sit in the first eight bytes. The other integers are 64-bit.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>offset  size  field
+0       4     magic SAHX
+4       1     version = 1
+5       1     type
+6       2     flags
+8       8     transfer_id
+16      8     seq
+24      8     offset
+32      8     payload_len
+40      8     send_time_ns
+48      16    route_token
+64      N     ciphertext
+64+N    16    Poly1305 tag
+</code></pre></div>
+<p>The header is 64 bytes. The tag is 16 bytes. Overhead is 80. The datagram length must equal <code>80 + payload_len</code>. Any other length is dropped.</p>
+<p><code>seq</code> starts at 1 in each direction. Sequence 0 and <code>2^64-1</code> are rejected. A peer never reuses a sequence under the same key and direction. A wrap aborts the grant.</p>
+<p><code>send_time_ns</code> is the sender's duration since the shared epoch. A UDP runner uses one epoch for the life of the process. A zero epoch means Unix time in nanoseconds on both processes.</p>
+<p>A version other than 1 is dropped before AEAD. The grant is not aborted, and no byte is written.</p>
+<p>Plaintext caps:</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Profile</th>
+<th scope="col">Datagram</th>
+<th scope="col">Plaintext</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>internet</code></td>
+<td>1232</td>
+<td>1152</td>
+</tr>
+<tr>
+<td><code>dc</code></td>
+<td>8192</td>
+<td>8112</td>
+</tr>
+</tbody>
+</table></div>
+<p>v1 does not probe the path MTU. The cap stays at the profile the grant issued. <code>dc</code> is a plaintext cap. It does not turn pacing off.</p>
+<h2 id="3-aead">3. AEAD</h2>
+<p>ChaCha20-Poly1305 (RFC 8439). The 64-byte header is associated data. The plaintext is the payload. The tag is the last 16 bytes. There is no cipher negotiation and no <code>crypto=off</code>.</p>
+<p>The 12-byte nonce is little-endian:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>byte 0      direction   0 = client, 1 = agent
+bytes 1..3  0
+bytes 4..11 seq
+</code></pre></div>
+<p>Each direction has its own sequence space. The same sequence from the client and the agent does not share a nonce.</p>
+<p>The route token is compared by SHA-256 of both sides, then a constant-time compare. A mismatch is not opened. A failed tag check drops the packet. It is not NACKed and it is not answered. The 32nd route-token mismatch, or the 32nd failed open, aborts the grant with <code>auth</code> and wipes the key. The two counters are separate. A mismatch is counted once. A listening peer counts only after it has pinned a source: before the first authentic datagram, failures from any source are dropped uncounted, so a stranger who can reach the listen port cannot spend the budget and kill the grant before the real peer arrives.</p>
+<h2 id="4-types">4. Types</h2>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Type</th>
+<th scope="col">Code</th>
+<th scope="col">Payload</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DATA</code></td>
+<td>1</td>
+<td>File bytes. <code>offset</code> is the file position.</td>
+</tr>
+<tr>
+<td><code>NACK</code></td>
+<td>2</td>
+<td>Hole list. <code>offset</code> is the highest contiguous byte. The receiver holds <code>[0, offset)</code>.</td>
+</tr>
+<tr>
+<td><code>FEEDBACK</code></td>
+<td>3</td>
+<td>48-byte congestion sample. Not a repair request.</td>
+</tr>
+<tr>
+<td><code>FIN</code></td>
+<td>4</td>
+<td>Empty. <code>offset</code> is the file size. The sender has put every byte on the wire at least once.</td>
+</tr>
+<tr>
+<td><code>DONE</code></td>
+<td>5</td>
+<td>32-byte SHA-256. <code>offset</code> is the file size. Sent only after fsync and rename.</td>
+</tr>
+<tr>
+<td><code>ABORT</code></td>
+<td>6</td>
+<td>One <code>u64</code> reason.</td>
+</tr>
+<tr>
+<td><code>PING</code></td>
+<td>7</td>
+<td>Empty. <code>offset</code> is the probe id. Bit 62 of a receiver's probe id is <code>ZERO_OK</code> (§4.5).</td>
+</tr>
+<tr>
+<td><code>PONG</code></td>
+<td>8</td>
+<td><code>u64 echo_send_time_ns</code>, <code>u64 receiver_delay_ns</code>. <code>offset</code> echoes the probe id.</td>
+</tr>
+<tr>
+<td><code>ZERO</code></td>
+<td>9</td>
+<td>One <code>u64 length</code>. <code>offset</code> is the file position. <code>[offset, offset+length)</code> is all zero bytes. Sent only to a receiver that set <code>ZERO_OK</code> (§4.5).</td>
+</tr>
+</tbody>
+</table></div>
+<p>An unknown type on an authentic packet aborts with <code>protocol</code>. A receiver that did not set <code>ZERO_OK</code> treats <code>ZERO</code> as unknown.</p>
+<p>Flags:</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Bit</th>
+<th scope="col">Value</th>
+<th scope="col">Name</th>
+<th scope="col">Legal on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>1</td>
+<td><code>RETX</code></td>
+<td><code>DATA</code> and <code>ZERO</code>. This range is a retransmission.</td>
+</tr>
+<tr>
+<td>1</td>
+<td>2</td>
+<td><code>CLOSE_ACK</code></td>
+<td><code>FIN</code> only, and only after the sender has accepted a valid <code>DONE</code>.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Any other bit, or a legal bit on the wrong type, aborts with <code>protocol</code> after the packet opens.</p>
+<p><code>offset + payload_len</code> uses a checked add. Wrap, or a span past <code>size</code>, aborts with <code>protocol</code> when the packet is authentic. <code>DATA</code> with length 0 aborts with <code>protocol</code> when <code>size</code> is greater than 0. An empty file has no <code>DATA</code> and no <code>ZERO</code>. For <code>ZERO</code> the span is <code>offset + length</code>, under the same checks.</p>
+<h3 id="41-nack">4.1 NACK</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>u64 hole_count          // 0..32
+hole_count times:
+    u64 start           // inclusive
+    u64 end             // exclusive
+</code></pre></div>
+<p>Holes are ordered, non-overlapping, and each <code>start &lt; end &lt;= size</code>. A hole is mature when a byte past its end has been accepted, or when it is older than <code>max(3 * srtt, 1 ms)</code> and any later sequence has been accepted. The trailing edge is not a hole. A NACK whose <code>offset</code> is above the bytes the sender has sent once aborts with <code>protocol</code>: the receiver cannot hold a contiguous byte that never left. The receiver sends a NACK at least once per smoothed RTT while a mature hole exists, and again as soon as a hole becomes mature.</p>
+<h3 id="42-feedback">4.2 FEEDBACK</h3>
+<p>Fixed 48 bytes:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>u64 echo_send_time_ns
+u64 delivered_bytes
+u64 newly_lost_bytes
+u64 highest_seq_received
+u64 ecn_ce_count
+u64 recv_rate_bps
+</code></pre></div>
+<p><code>offset</code> is the highest contiguous file byte, the same value as on a NACK, and above the bytes the sender has sent once it aborts with <code>protocol</code>. <code>highest_seq_received</code> is the highest <code>seq</code> of a <code>DATA</code> that added bytes the receiver did not hold; a duplicate does not raise it, and it never decreases. The sender's stall-probe undo depends on this. Cadence is <code>max(5 ms, srtt / 4)</code>, and at least every 64 accepted <code>DATA</code> packets. The sender retransmits on NACK, plus a stall probe. FEEDBACK does not request a retransmission.</p>
+<p>pace-bbr uses this sample. It runs on UDP. <code>quic-datagram</code> and <code>quic-bridge</code> turn inner pacing off, because QUIC already paces that hop.</p>
+<p>The implementation's flight window includes a bounded aggregation allowance: the maximum of the last ten delivery-advancing feedback intervals, each capped at 50 ms. It uses <code>max(2 * bw * max(RTprop, 5 ms, allowance), 10 * MSS)</code>, subject to the loss cap and the four-MSS PROBE_RTT override. Packet pacing catches up at most 2 ms of lateness; a longer idle gap resets credit. The allowance changes the window, not the paced bandwidth estimate. See <code>docs/design.md</code> §6 for the complete controller.</p>
+<p>A due feedback, close, recovery, or expiry timer must be serviced without an additional socket wait. Only actionable timers schedule an immediate pump: no feedback timer before any DATA of a nonempty file, and no repeated NACK timer after its holes have filled. Scheduler delays are not a reason to postpone an already due timer by another polling interval. This is a local scheduling requirement, not a wire-format change.</p>
+<h3 id="43-close">4.3 Close</h3>
+<p><code>FIN</code> and <code>DONE</code> are the close signals. They are not per-packet acknowledgements.</p>
+<ul>
+<li>The sender, after every byte has been transmitted once, enters <code>FLUSHING</code> and sends <code>FIN</code> every RTT.</li>
+<li>The receiver commits, then sends <code>DONE</code> every RTT until a <code>FIN</code> with <code>CLOSE_ACK</code> arrives, or until idle.</li>
+<li>The sender accepts <code>DONE</code> only when the hash and the size match the grant, then sets <code>CLOSE_ACK</code> on later <code>FIN</code>.</li>
+<li>In <code>SENDING</code> or <code>FLUSHING</code>, if bytes above the contiguous offset are in flight and neither that offset nor <code>delivered_bytes</code> has advanced for <code>W = 2 * max(srtt + 4 * rttvar, 5 ms)</code> (1 s before the first RTT sample), the sender retransmits its highest in-flight segment with <code>RETX</code>. If that is followed by no progress for <code>max(2 * W, 1 s)</code>, it retransmits every in-flight range older than the repair timeout (<code>2 * srtt</code>) with <code>RETX</code>, doubling that wait per repeat up to 8 s. In <code>FLUSHING</code> the sender keeps sending <code>FIN</code>.</li>
+</ul>
+<p>Give-up is <code>max_seconds</code> or <code>idle_seconds</code>, then <code>ABORT</code> with <code>expired</code> or <code>idle</code>.</p>
+<p>Empty file: <code>PING</code>, one <code>PONG</code>, <code>FIN</code> with <code>offset</code> 0. The receiver commits a 0-byte file and sends <code>DONE</code> with SHA-256 of the empty input:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+</code></pre></div>
+<h3 id="44-abort">4.4 ABORT</h3>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Code</th>
+<th scope="col">Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>size_mismatch</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>hash_mismatch</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>expired</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>policy</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>io</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>protocol</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>auth</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>cancelled</code></td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>byte_cap</code></td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>idle</code></td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>no_space</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><code>ABORT</code> is best-effort. The grant is then dead. The receiver deletes the temp file. A later <code>DATA</code> for a dead grant is dropped.</p>
+<h3 id="45-zero">4.5 ZERO</h3>
+<p>A run of zero bytes in the file travels as one <code>ZERO</code> frame instead of <code>DATA</code>. Offsets stay file offsets, the hole map and NACK are unchanged, and the hash is still SHA-256 of the whole file.</p>
+<p>Negotiation. The receiver sets bit 62 (<code>0x4000000000000000</code>, <code>ZERO_OK</code>) in the <code>offset</code> of every <code>PING</code> it sends. Probe ids are counters and never set bits 62 or 63 otherwise. A sender sends <code>ZERO</code> only after an authentic <code>PING</code> with <code>ZERO_OK</code>; until then, and always for a receiver that never sets it, zero bytes go as <code>DATA</code>. A sender ignores the bit on <code>PONG</code>. A v1 sender echoes the probe id in its <code>PONG</code> and does not read it, and a v1 receiver never sets it, so neither old peer sees a change. The datagram version stays 1.</p>
+<p>Payload, exactly 8 bytes:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>u64 length      // 1 .. 1048576, and offset + length &lt;= size
+</code></pre></div>
+<p>Receiver, after the packet opens: a payload other than 8 bytes, <code>length</code> 0, <code>length</code> above 1 MiB, a wrap, a span past <code>size</code>, <code>size</code> 0, or a receiver that did not set <code>ZERO_OK</code>: abort with <code>protocol</code>. Otherwise every byte of the span the hole map still lacks is made to read as zero (the temp file is extended to cover it, and the range may be deallocated, §5), the span is accepted into the hole map as <code>DATA</code> would be, and the streaming SHA-256 folds those zero bytes in order. <code>delivered_bytes</code>, <code>highest_seq_received</code>, the idle timer, <code>byte_cap</code>, and the <code>active</code> and <code>result</code> byte counts treat a <code>ZERO</code> exactly as <code>DATA</code> of <code>length</code> bytes. First write wins as for <code>DATA</code>.</p>
+<p>Sender. With <code>ZERO_OK</code>, each new block of <code>MSS</code> bytes at a multiple of <code>MSS</code> (the last block of the file may be shorter) is compared with zero before it is sealed. A zero block starts a run; following zero blocks extend it, up to <code>floor(1 MiB / MSS) * MSS</code> bytes or the end of the file. A run of at least <code>MSS</code> bytes is one <code>ZERO</code>. A run that is only a short final block is <code>DATA</code>. A repair reads its range again and uses <code>ZERO</code> for a zero prefix of at least <code>MSS</code> bytes or for the whole remaining range, otherwise <code>DATA</code>. A hole inside a zero run is repaired with <code>ZERO</code>. Either frame carries the same bytes at the same offset, so the one-plaintext rule (§5) holds.</p>
+<p>Charge. A <code>ZERO</code> costs the sender 88 bytes, its datagram, in the pacer and the in-flight cap, and a lost <code>ZERO</code> counts 88 bytes of loss. The pacer's delivery count, with <code>d = min(delivered_bytes, bytes sent once)</code> and <code>contig</code> the highest contiguous offset, is <code>(contig - Zb) + max(0, d - contig - Za)</code>: <code>Zb</code> is <code>length - 88</code> summed over the <code>ZERO</code>s sealed for the first time that lie wholly below <code>contig</code>, <code>Za</code> the same over the others. It is exact below <code>contig</code> and can only fall short above it, never exceed the wire bytes delivered, so neither a zero run nor a peer that reports more than the file can raise the bandwidth estimate.</p>
+<h2 id="5-reliability">5. Reliability</h2>
+<p>The sender keeps the file. A retransmission reads the range again, seals it under a new sequence, and sets <code>RETX</code>. The plaintext at an offset is fixed for the life of the grant.</p>
+<p>The receiver writes the temp file with <code>pwrite</code>. A <code>ZERO</code> span is written as a hole: the temp file is extended with <code>ftruncate</code> when it is shorter than the span's end (never shrunk), then the block-aligned inside of the span is deallocated with <code>fallocate(PUNCH_HOLE|KEEP_SIZE)</code> on Linux or <code>F_PUNCHHOLE</code> on Darwin where the filesystem supports it, and nothing more elsewhere. The temp was created empty and a range the hole map lacks was never written, so it reads as zero once the file covers it. The first write at an offset wins. A replay of the same bytes is a no-op. The streaming SHA-256 folds only the contiguous prefix. Out-of-order ranges sit in the file until the gap in front of them closes.</p>
+<p>The hole map starts as <code>[0, size)</code>. It holds missing ranges, not file bytes.</p>
+<p>Implementations may hash newly written contiguous DATA directly from authenticated plaintext after a complete successful write. Only previously missing bytes at the hash frontier may enter that hash; duplicate or overlapping bytes already on disk must never be replaced or hashed from the new packet. Out-of-order bytes and ZERO ranges are read from the temp file as the hash frontier reaches them. Short I/O fails closed with <code>io</code>. Streaming hashing verifies accepted contents; post-fsync media verification is a separate policy described in the design.</p>
+<p>Bounded read-ahead and reusable decryption scratch space are local implementation choices. A pending sender frame owns its plaintext independently of scratch buffers. A repair rereads the source and uses a fresh sequence. A failed authenticated open must never expose scratch contents to the file writer. These optimizations leave the grant, nonce, cipher, byte caps, and v1 framing unchanged.</p>
+<p><code>byte_cap</code> counts unique file bytes sealed for the first time and unique bytes accepted, a <code>ZERO</code> by its <code>length</code>. A retransmission does not add to the cap. Exceeding the cap aborts with <code>byte_cap</code>. The relay charges a <code>ZERO</code> its 88 bytes against its control budget (§6).</p>
+<p>Commit order on the receiver: hole map empty, streamed SHA-256 equals the grant, <code>fsync</code> the temp file, <code>fsync</code> the parent directory, then rename. <code>DONE</code> is sent after that. A hash mismatch deletes the temp and does not rename. <code>overwrite</code> false uses <code>renameat2(RENAME_NOREPLACE)</code>. The temp name is <code>.sahxfer-&lt;grant_id&gt;.part</code>, created <code>O_CREAT|O_EXCL|O_NOFOLLOW|O_RDWR</code>, mode 0600.</p>
+<p>Linux opens the root and the path with <code>openat2</code> (<code>RESOLVE_BENEATH</code>, no symlinks, no magic links). A kernel without <code>openat2</code> is <code>agent_unsupported</code>. Darwin walks each component with <code>O_NOFOLLOW</code>. That walk is not <code>openat2</code>.</p>
+<h2 id="6-relay">6. Relay</h2>
+<p>The default path is a relay that does not have the key. Both peers send UDP to it. Direct UDP is used only when policy says the host published a reachable address. NAT hole punching is out of v1.</p>
+<p>On a packet the relay checks magic and version, requires at least 80 bytes, looks up <code>transfer_id</code>, and compares the route token as in section 3. The first source 4-tuple in each direction is pinned. A different source is dropped. A third peer cannot join. The datagram is forwarded unchanged. When the other peer is not pinned yet, the relay holds one datagram for 1 second.</p>
+<p>The 32nd token mismatch forgets the grant and reports <code>auth</code>. The forwarding cap is the grant's byte cap, charged with <code>DATA</code> payload. Every other datagram, <code>ZERO</code> included, is charged its whole length against a second budget of <code>byte_cap + 256 MiB</code>; past either, the relay forgets the grant and reports <code>byte_cap</code>. The relay does not log the route token, rewrite sequence or offset, or fragment.</p>
+<h2 id="7-quic">7. QUIC</h2>
+<p>QUIC is a pipe for the same grant. It is not a second authorization path. ALPN is <code>sahxfer/1</code>. TLS 1.3 only. The certificate chains to the system pool and the name matches the grant. A 32-byte SPKI pin, when the dialer is given one, is SHA-256 of the leaf <code>RawSubjectPublicKeyInfo</code> and is checked after the chain and the name. Any other pin length fails closed as <code>auth</code> before the dial. Verification is not skipped. 0-RTT is not used.</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Transport</th>
+<th scope="col">What moves</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>udp</code></td>
+<td>Sealed frames on UDP. pace-bbr on. This is what the CLI runs.</td>
+</tr>
+<tr>
+<td><code>quic-bridge</code></td>
+<td>One QUIC connection per grant. Each DATAGRAM is one sealed frame. The bridge applies the relay rules and does not have the key. The UDP-bound queue stops at 4 MiB. Inner pacing is off.</td>
+</tr>
+<tr>
+<td><code>quic-datagram</code></td>
+<td>Both peers on QUIC. DATAGRAMs carry sealed frames. Reliability is still NACK. Congestion is QUIC's. Inner pacing is off.</td>
+</tr>
+<tr>
+<td><code>quic-stream</code></td>
+<td>One unidirectional stream of exactly <code>size</code> raw bytes, then stream FIN. No 64-byte header and no NACK. The receiver hashes while reading. A short stream or a stream longer than <code>size</code> is <code>protocol</code> and deletes the temp. The receiver writes the 32-byte SHA-256 on its own unidirectional stream. Endpoint to endpoint. The bytes are inside QUIC TLS and are not sealed again.</td>
+</tr>
+</tbody>
+</table></div>
+<p>A sealed internet frame is 1232 bytes. <code>quic-datagram</code> on the <code>dc</code> cap (8192) does not fit the default QUIC datagram bound and fails closed as <code>protocol</code>.</p>
+<h2 id="8-limits">8. Limits</h2>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Setting</th>
+<th scope="col">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Time to first packet</td>
+<td>60 s</td>
+</tr>
+<tr>
+<td>Idle</td>
+<td>30 s, at most 3600 s</td>
+</tr>
+<tr>
+<td>Hard max</td>
+<td>3600 s</td>
+</tr>
+<tr>
+<td>Auth failures</td>
+<td>32 per counter</td>
+</tr>
+<tr>
+<td>NACK holes</td>
+<td>32</td>
+</tr>
+<tr>
+<td><code>ZERO</code> length</td>
+<td>1 MiB</td>
+</tr>
+<tr>
+<td>Relay hold</td>
+<td>1 datagram, 1 s</td>
+</tr>
+<tr>
+<td>Bridge queue</td>
+<td>4 MiB, UDP-bound bytes for that grant</td>
+</tr>
+</tbody>
+</table></div>
+<p>A limit breach aborts. It does not truncate and commit.</p>
+<h2 id="9-out-of-v1">9. Out of v1</h2>
+<p>Directories, delete, rsync deltas, more than one file per grant, resume, NAT hole punching, <code>crypto=off</code>, 0-RTT, a decrypting bridge, <code>O_DIRECT</code>, <code>sendfile</code>, <code>splice</code>, and <code>mmap</code> of the fast path. If UDP and QUIC are both blocked, the transfer fails. The operator uses <code>sahsync</code>.</p></article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/transfer/protocol.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

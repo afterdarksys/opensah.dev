@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Compatibility and limits | OpenSAH / dev</title><meta name="description" content="Compatibility is a concrete client, server, host and transport combination—not a product-name promise."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/transfer/compatibility.html"><meta property="og:type" content="website"><meta property="og:title" content="Compatibility and limits"><meta property="og:description" content="Compatibility is a concrete client, server, host and transport combination—not a product-name promise."><meta property="og:url" content="https://opensah.dev/transfer/compatibility.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Transfer documentation</p><h1>Compatibility and limits</h1><p>Compatibility is a concrete client, server, host and transport combination—not a product-name promise.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><a href="/index.html">Documentation home</a><a href="/api.html">Ecosystem API reference</a><strong>File transfer</strong><a href="/transfer/index.html">Transfer overview</a><a href="/transfer/quickstart.html">Human & agent quickstarts</a><a href="/transfer/protocol.html">sahxfer wire protocol v1</a><a href="/transfer/api.html">Transfer API & lifecycle</a><a href="/transfer/compatibility.html" aria-current="page">Compatibility & limits</a><a href="/transfer/security.html">Security & failure semantics</a><a href="/transfer/performance.html">Performance & measurements</a><a href="/transfer/roadmap.html">Experiments & streaming</a><a href="/transfer/sahsync.html">sahsync usage</a><a href="/transfer/paths.html">sahsync path rules</a><a href="/transfer/file-protocol.html">Agent file protocol</a></aside><article class="docs-content"><p>Baseline: October 22, 2026. No complete cross-version release matrix or Go/Rust interoperability certification was established by this documentation review.</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Surface</th>
+<th scope="col">Current support or limitation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>sahsync</td>
+<td>Unix client; agent WebSocket file protocol; whole-file sync both ways</td>
+</tr>
+<tr>
+<td>sahxfer CLI</td>
+<td>UDP; one regular file, one direction, one grant</td>
+</tr>
+<tr>
+<td>QUIC</td>
+<td>Library implementations exist; CLI rejects QUIC grants with <code>agent_unsupported</code></td>
+</tr>
+<tr>
+<td>Linux file confinement</td>
+<td><code>openat2</code>; unsupported kernels fail rather than falling back</td>
+</tr>
+<tr>
+<td>Darwin file confinement</td>
+<td>Component walk with <code>O_NOFOLLOW</code>; not equivalent to Linux <code>openat2</code></td>
+</tr>
+<tr>
+<td>Windows</td>
+<td>No supported transfer workflow established by these sources</td>
+</tr>
+<tr>
+<td>Go toolchain</td>
+<td>Modules declare Go 1.26; cited performance runs used Go 1.27/1.27.3</td>
+</tr>
+<tr>
+<td>Rust peer interoperability</td>
+<td>Not verified here; do not infer wire compatibility from a repository name</td>
+</tr>
+<tr>
+<td>Hub/agent deployment</td>
+<td>Must be verified for the deployed pair; local grant tests are insufficient</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="wire-and-network-constraints">Wire and network constraints</h2>
+<p>sahxfer uses wire version 1, a 64-byte header and a 16-byte AEAD tag. The grant selects <code>internet</code> (1,232-byte datagram / 1,152-byte plaintext) or <code>dc</code> (8,192 / 8,112). There is no v1 path-MTU probing. A large-profile path must actually support the selected datagrams; it is not automatically faster.</p>
+<p>UDP reachability is required. A listening peer needs a reachable address; NAT without an exposed port requires an appropriate relay route. A relay forwards sealed packets and cannot decrypt file contents. Blocked UDP does not trigger an automatic CLI QUIC or TCP fallback.</p>
+<p>The QUIC library requires TLS 1.3, ALPN <code>sahxfer/1</code> and no 0-RTT; those library properties do not make QUIC a supported CLI option. pace-bbr is the implementation's tested controller subset, not a byte-identical BBRv3 implementation.</p>
+<h2 id="files-and-recovery">Files and recovery</h2>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Capability</th>
+<th scope="col">sahsync</th>
+<th scope="col">sahxfer v1</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Directory trees</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Whole-file integrity</td>
+<td>SHA-256</td>
+<td>SHA-256 plus authenticated datagrams</td>
+</tr>
+<tr>
+<td>Delta / content-defined chunk reuse</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Resume</td>
+<td>Checked upload-prefix resume; no persisted download resume</td>
+<td>No; new grant starts at zero</td>
+</tr>
+<tr>
+<td>Symlink copying</td>
+<td>Skipped/refused</td>
+<td>Refused</td>
+</tr>
+<tr>
+<td>Preserve ownership</td>
+<td>No</td>
+<td>No ownership-preservation promise</td>
+</tr>
+<tr>
+<td>mtime preservation</td>
+<td>No</td>
+<td>No metadata-preservation promise</td>
+</tr>
+<tr>
+<td>Delete planning</td>
+<td>Dry run unless <code>--yes</code>; explicit <code>--dry-run</code> wins</td>
+<td>Not a tree-sync tool</td>
+</tr>
+</tbody>
+</table></div>
+<p>sahsync's <a href="paths.html">path and name rules</a> include case/Unicode collision checks for downloads and reserved temp names. Do not assume that an scp-style command means every filename or metadata field is portable.</p>
+<h2 id="before-claiming-interoperability">Before claiming interoperability</h2>
+<p>Record exact client, server and helper revisions; OS/kernel; transport/profile; path policy; and tested put/get cases. Run negative cases for wrong grants, unsupported versions, replay, tampered data, expiry, hash mismatch and path escape. Publish tested combinations with dates. A schema document alone is not interoperability evidence.</p></article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/transfer/compatibility.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

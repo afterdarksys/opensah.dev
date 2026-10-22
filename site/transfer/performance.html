@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Performance evidence and reproduction | OpenSAH / dev</title><meta name="description" content="Local measurements with timing boundaries, workloads, baseline revisions and remaining evaluation work."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/transfer/performance.html"><meta property="og:type" content="website"><meta property="og:title" content="Performance evidence and reproduction"><meta property="og:description" content="Local measurements with timing boundaries, workloads, baseline revisions and remaining evaluation work."><meta property="og:url" content="https://opensah.dev/transfer/performance.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Transfer documentation</p><h1>Performance evidence and reproduction</h1><p>Local measurements with timing boundaries, workloads, baseline revisions and remaining evaluation work.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><a href="/index.html">Documentation home</a><a href="/api.html">Ecosystem API reference</a><strong>File transfer</strong><a href="/transfer/index.html">Transfer overview</a><a href="/transfer/quickstart.html">Human & agent quickstarts</a><a href="/transfer/protocol.html">sahxfer wire protocol v1</a><a href="/transfer/api.html">Transfer API & lifecycle</a><a href="/transfer/compatibility.html">Compatibility & limits</a><a href="/transfer/security.html">Security & failure semantics</a><a href="/transfer/performance.html" aria-current="page">Performance & measurements</a><a href="/transfer/roadmap.html">Experiments & streaming</a><a href="/transfer/sahsync.html">sahsync usage</a><a href="/transfer/paths.html">sahsync path rules</a><a href="/transfer/file-protocol.html">Agent file protocol</a></aside><article class="docs-content"><p>Checked October 22, 2026. Source: <code>sahxfer/docs/performance.md</code> at <code>30830a6b76fe</code>. <a href="/transfer/performance.md">Download the exact Markdown snapshot</a>.</p>
+<p>These are reported source measurements, not benchmarks rerun for this website change. They do not establish superiority over other transfer protocols.</p>
+<div class="toc">
+<ul>
+<li><a href="#single-file-performance">Single-file performance</a></li>
+<li><a href="#implemented">Implemented</a></li>
+<li><a href="#reproduce">Reproduce</a></li>
+<li><a href="#allocation-overhaul-2026-10-22">Allocation overhaul (2026-10-22)</a></li>
+<li><a href="#remaining-work">Remaining work</a><ul>
+<li><a href="#source-read-ahead-experiment-2026-10-22">Source read-ahead experiment (2026-10-22)</a></li>
+<li><a href="#next-measurements">Next measurements</a></li>
+</ul>
+</li>
+<li><a href="#validation">Validation</a></li>
+<li><a href="#measurement-tranches-2026-10-22">Measurement tranches (2026-10-22)</a></li>
+</ul>
+</div>
+<h2 id="single-file-performance">Single-file performance</h2>
+<p>Measurements and implementation notes, 2026-10-22. These are local results,
+not a claim to outperform every transport or an independent security audit.
+One grant still transfers one regular file. The v1 wire layout is unchanged.</p>
+<h2 id="implemented">Implemented</h2>
+<ul>
+<li>Actionable overdue timers run immediately, including the QUIC datagram
+  runner. Inactive feedback and cleared NACKs cannot create a busy loop.</li>
+<li>pace-bbr tolerates up to 2 ms of scheduling lateness. The previous 1 ms
+  cutoff discarded credit on roughly 1 ms Linux timer wakeups plus overhead.
+  Longer idle gaps reset credit; catch-up remains bounded by pacing and the
+  flight window. QUIC still disables this controller.</li>
+<li>The flight window accounts for observed delivery-feedback spacing over
+  ten samples, capped at 50 ms. This allowance expires, ignores replayed
+  delivery counts, and never bypasses the loss cap or PROBE_RTT.</li>
+<li>New source data uses 256 KiB read-ahead. Pending frames own their bytes;
+  repairs reread the file and receive fresh sequence numbers. The original
+  source hash validation is retained.</li>
+<li>In-order DATA is hashed from authenticated plaintext only after a full
+  successful write. Overlaps retain first-write-wins. Out-of-order bytes and
+  ZERO ranges still fold from the temp file when contiguous.</li>
+<li>Decryption scratch space is reused and cleared on peer close. Failed opens
+  expose no plaintext to the writer. Cipher and route-token comparison rules
+  are unchanged.</li>
+<li>The common one-hole prefix update and missing-range visitor avoid repeated
+  interval allocations. Short reads and writes fail closed.</li>
+<li><code>--diag</code> reports sender pacing state, bandwidth estimate, flight bytes,
+  window cap, delivered prefix, and RTT at most once per second. No credentials,
+  grant material, or file contents enter these diagnostics.</li>
+</ul>
+<h2 id="reproduce">Reproduce</h2>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code class="language-sh">go test ./...
+go test -race ./...
+go vet ./...
+go test ./internal/engine -run '^$' -bench BenchmarkFile -benchmem -count=3
+go test ./internal/udp -run '^$' -bench BenchmarkDiskTransfer -benchtime=1x -count=3
+go test ./internal/udp -run '^TestLoopbackThroughput30MB$' -count=3 -v
+</code></pre></div>
+<p>Run benchmarks without concurrent compiles or other load. Record OS, CPU,
+Go version, granted socket buffers, filesystem, and whether caches are warm.
+Do not compare a memory-file loopback result with a disk-transfer result.</p>
+<p>The file microbenchmarks use 4 MiB of nonzero data on actual files. They
+isolate source classification and receiver writes/hashing, excluding network,
+AEAD, preparation, and durable commit. On Darwin amd64, Intel i9-9880H,
+Go 1.27, three samples before and after the I/O changes:</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Measurement</th>
+<th scope="col">Before</th>
+<th scope="col">After</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source classification</td>
+<td>814–845 MB/s</td>
+<td>3,273–3,369 MB/s</td>
+</tr>
+<tr>
+<td>Receiver writes and hash</td>
+<td>190–214 MB/s</td>
+<td>273–282 MB/s</td>
+</tr>
+<tr>
+<td>Receiver allocations per 4 MiB</td>
+<td>3,651</td>
+<td>9</td>
+</tr>
+</tbody>
+</table></div>
+<p>The baseline is commit <code>56d69c7</code> with the same benchmark code. These are
+warm-cache results. Source buffering adds bounded memory and does not yet
+remove the allocation of each outgoing plaintext and ciphertext frame.</p>
+<p><code>BenchmarkDiskTransfer</code> moves 30 MB through actual source and destination
+files over loopback UDP. Timing includes both source hash passes, encryption,
+transfer, destination fsync, and rename. Source creation and independent
+byte-for-byte destination verification are outside the timer. It does not
+contact SystemAPI or measure a cold disk. The original-code baseline measured
+24.3–40.6 MB/s; the first optimized runs measured 43.9–54.9 MB/s. Host load
+varied, so these ranges are evidence of improvement, not a precise speedup.
+After the final pacing changes and completion of the test suites, three
+additional runs measured 55.0, 55.2, and 55.2 MB/s (0.543–0.545 s each).</p>
+<p>Linux container loopback with memory-backed files timed out at 16 s in three
+consecutive runs before correcting pacing slack. Diagnostics showed bandwidth
+near 2 MB/s and flight bytes below the window cap. After the 2 ms correction,
+three runs completed in 0.271–0.384 s, or 78–111 MB/s. That test excludes source
+preparation and durable file commit; it is a scheduling regression check.</p>
+<h2 id="allocation-overhaul-2026-10-22">Allocation overhaul (2026-10-22)</h2>
+<p>UDP now opts into a per-peer cache of at most 64 returned datagram buffers.
+New buffers use 1,232-byte or 8,192-byte size classes; retained buffer capacity
+is at most 512 KiB, excluding outstanding packets and other engine storage.
+Only after a synchronous send finishes or fails does a batch return to the
+cache. Queued pre-pin packets remain owned until sent or discarded. Returned
+buffers are wiped, including the header route token. Existing allocating Take
+callers and QUIC retain their previous ownership contract.</p>
+<p><code>SealInto</code> writes into caller-owned storage without overlapping AEAD output
+with additional data. Sessions reuse separate send/open nonce scratch under
+single-owner execution; nonce bytes remain direction plus sequence. UDP compares
+binary IP/port/zone values rather than formatting peer addresses per packet.</p>
+<p>The focused seal/open test measures zero allocations after setup with supplied
+buffers. This is not a claim of a zero-allocation transfer: outgoing plaintext,
+socket address decoding, and other work still allocate.</p>
+<p>An isolated archive of baseline <code>9db1211</code> and the final implementation ran five
+30 MB disk/UDP samples each on Darwin amd64, Intel i9-9880H, Go 1.27.3. Source
+pipeline was off. Both include source preparation and durable commit, use warm
+caches, and independently verify destination contents. No test or compile jobs
+from this session ran concurrently with the timed samples.</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Measurement</th>
+<th scope="col">Baseline median</th>
+<th scope="col">Final median</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Allocations per transfer</td>
+<td>396,150</td>
+<td>125,908</td>
+</tr>
+<tr>
+<td>Bytes allocated per transfer</td>
+<td>72,762,696</td>
+<td>36,200,040</td>
+</tr>
+<tr>
+<td>Goodput</td>
+<td>56.21 MB/s</td>
+<td>57.78 MB/s</td>
+</tr>
+</tbody>
+</table></div>
+<p>Allocation count fell about 68%, and allocation volume about 50%. Allocated
+bytes are cumulative allocations across both peers, not peak RSS. The local
+median goodput difference is about 3%; five short sequential samples do not
+establish a general throughput advantage. Earlier intermediate versions/runs
+varied from 49.49 to 59.68 MB/s. Allocation reduction is the primary evidence.</p>
+<p>Baseline goodput samples: 53.24, 57.30, 56.97, 54.14, 56.21 MB/s.
+Final goodput samples: 57.78, 56.32, 57.93, 57.36, 57.86 MB/s.
+Final allocation counts: 120021, 133647, 125908, 121614, 126906.
+Reproduce with <code>go test ./internal/udp -run '^$' -bench
+'BenchmarkDiskTransfer/pipeline=false' -benchtime=1x -count=5</code>.</p>
+<p>Validation: full Darwin and Linux suites passed; full Darwin race suite passed
+before the final size-class/AEAD-slice refinements, followed by targeted race
+checks and full Darwin tests, and Linux regression checks for those refinements.
+<code>go vet ./...</code> passed. New tests cover independent reference nonce/wire encoding,
+tampered tags in reused storage, zero-allocation seal/open scratch, outstanding
+batch ownership, cache bounds/wiping, size-class transitions, IPv4-mapped peer
+identity, port/host changes, and distinct IPv6 zones. Existing fail-closed grant,
+path, replay, hash, and peer-pinning suites remain in force.</p>
+<h2 id="remaining-work">Remaining work</h2>
+<h3 id="source-read-ahead-experiment-2026-10-22">Source read-ahead experiment (2026-10-22)</h3>
+<p><code>put --pipeline-source</code> enables one asynchronous source reader. It hands off
+owned buffers through bounded channels; the engine retains hashing, sealing,
+sequence allocation, and pacing. Two source buffers total at most 512 KiB.
+Repairs reread the source, ZERO scans remain synchronous, and receiver writes
+and commit are unchanged. Initial source validation still precedes the transfer.
+The option is off by default and requires no negotiation or wire changes.</p>
+<p>Final measurements on Darwin amd64, Intel i9-9880H, Go 1.27.3, with warm file
+caches and no concurrent test/compile jobs from this session:</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Measurement</th>
+<th scope="col">Pipeline off</th>
+<th scope="col">Pipeline on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>4 MiB source classification, three samples</td>
+<td>3,067–3,281 MB/s</td>
+<td>3,071–3,188 MB/s</td>
+</tr>
+<tr>
+<td>30 MB disk/UDP transfer, five samples</td>
+<td>52.07–54.82 MB/s</td>
+<td>53.19–55.05 MB/s</td>
+</tr>
+<tr>
+<td>Disk/UDP median</td>
+<td>53.59 MB/s</td>
+<td>53.96 MB/s</td>
+</tr>
+<tr>
+<td>Source microbenchmark allocation bytes per iteration</td>
+<td>4,456,461 (representative)</td>
+<td>4,719,160 (representative)</td>
+</tr>
+</tbody>
+</table></div>
+<p>The median difference is below 1%, with overlapping ranges. This does <strong>not</strong>
+establish an end-to-end performance improvement on this workload. Keep the
+option experimental; test cold or slower storage and larger transfers before
+considering a default change. Allocation bytes include per-frame allocations
+over the whole iteration, not just the bounded live lookahead buffers. Earlier
+samples taken concurrently with tests were excluded from this table.</p>
+<p>Reproduce with the existing <code>BenchmarkFileSource</code> and <code>BenchmarkDiskTransfer</code>:
+both now report <code>pipeline=false</code> and <code>pipeline=true</code> subbenchmarks. Use
+<code>-benchtime=1x -count=5</code> for the disk benchmark. Each disk sample independently
+verifies the destination after durable commit.</p>
+<p>Validation: full Darwin and Linux-container suites passed; Darwin engine and
+CLI race suites and <code>go vet ./...</code> passed. New tests cover concurrent read-ahead,
+worker join and buffer wiping, skipped blocks, direct repair reads, pending
+frame ownership, internet/DC block boundaries, partial tails, short/error reads,
+abort without commit, loss repair, ZERO runs, and the CLI option. This phase
+does not implement concurrent destination writes or a worker pool for crypto.
+Close waits for any outstanding filesystem read; no cancellation latency bound
+is claimed for a blocked filesystem.</p>
+<h3 id="next-measurements">Next measurements</h3>
+<ol>
+<li>Measure sustained transfers between physical Linux hosts at multiple RTTs,
+   with random loss, burst loss, reordering, reverse-path outages, competing
+   flows, and slow storage. Existing deterministic path tests remain required.</li>
+<li>Separate selectively delivered byte credit from contiguous completion.
+   Today a missing prefix still keeps later segments in flight. ZERO and
+   retransmission accounting need a specified, tested design before changing it.</li>
+<li>Consolidate duplicated source validation without weakening change detection
+   or allowing preparation to consume the grant's first-packet deadline.</li>
+<li>Reduce outgoing allocations and improve effective send batches. Any buffer
+   pool needs explicit ownership until socket completion and failure tests.</li>
+<li>Evaluate batched destination writes, kernel pacing, and a real Linux
+   io_uring backend using profiles. No io_uring implementation is claimed here.</li>
+</ol>
+<p>Retain TLS 1.3, ChaCha20-Poly1305, authenticated grants, path confinement,
+first-write-wins, hash verification, and durable commit throughout. Compression,
+MTU negotiation, resume, and wire-format changes require separate specifications.</p>
+<h2 id="validation">Validation</h2>
+<p>The final implementation passed <code>go test ./...</code> on Darwin amd64 (Go 1.27.3)
+and in the local Linux <code>golang:1.27</code> container, plus <code>go test -race ./...</code>
+and <code>go vet ./...</code> on Darwin. The existing suites cover tampered packets,
+expiry, grant binding and purpose, path escape and symlinks, hash mismatch,
+replay, and peer pinning. Added tests cover overdue and inactive timers,
+repair recheck timing, first-send credit, 1.1 ms scheduling lateness, bounded
+and aging feedback allowance, overlapping writes, short I/O, source-buffer
+ownership, scratch clearing, and a bitmap reference check of hole tracking.</p>
+<p>These checks do not establish Internet fairness, production host isolation,
+or performance at 10/25/100 Gbit/s. Those remain deployment and evaluation work.</p>
+<h2 id="measurement-tranches-2026-10-22">Measurement tranches (2026-10-22)</h2>
+<p>The disk benchmark now reports preparation, AttachSource validation, setup,
+transfer/verification, durable commit, and close separately. A new opt-in
+<code>BenchmarkSustainedTransfer</code> covers both payload profiles and source-pipeline
+settings with streamed random fixtures and bounded-memory verification.
+<code>scripts/profile-transfer.sh</code> collects unprofiled timing separately from CPU,
+allocation, and execution-trace artifacts. See <a href="https://github.com/afterdarksys/sahxfer/blob/30830a6b76fe4765048925c26e1ac216b1f981af/docs/performance-lab.md">the lab guide</a>
+for precise timing boundaries, reproduction, and the pending physical-host plan.
+No source hash pass or production transport behavior was removed.</p>
+<p>Three 256 MiB warm-cache Darwin samples per case measured median end-to-end
+65.56 MB/s (internet, pipeline off), 65.49 MB/s (internet, on), 95.71 MB/s
+(DC, off), and 94.54 MB/s (DC, on). Single 2 GiB runs with pipeline off measured
+63.59 and 101.57 MB/s respectively; their transfer-only intervals measured
+91.59 and 199.0 MB/s. Two initial hash passes consumed about 10.3 s per 2 GiB
+run. These are observations on loopback, not physical-host or competitor results.
+The new random fixture differs from the older benchmark's deterministic body.
+Raw timing and profile reports are in <code>docs/benchmarks/2026-10-22-transfer/</code>;
+<a href="https://github.com/afterdarksys/sahxfer/blob/30830a6b76fe4765048925c26e1ac216b1f981af/docs/../FILE_XFER_RESEARCH.md">the research brief</a> interprets the findings and defines
+FTP/SFTP/SCP comparisons and the proposed agent-facing product contract.</p></article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/transfer/performance.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>
