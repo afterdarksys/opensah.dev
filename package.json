@@ -5,9 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "node tools/site.mjs serve",
-    "check": "node tools/site.mjs check"
+    "check": "node tools/site.mjs check",
+    "build": "node tools/site.mjs check && rm -rf dist && rsync -a --exclude='.*' site/ dist/ && cf build",
+    "deploy": "scripts/deploy.sh"
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "cf": "1.0.0-beta.32",
+    "wrangler": "4.162.0"
   }
 }
