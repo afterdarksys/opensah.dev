@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>The SAH utilities | OpenSAH / dev</title><meta name="description" content="What exists in the SAH suite and what each utility is for: opensah, sahconnect, sahapi, sahlink, sahsync, sahmesh, sahrdp, sahxfer, sah2grpc and sahcore, with status, a first command, and which one to reach for."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/sah-suite.html"><meta property="og:type" content="website"><meta property="og:title" content="The SAH utilities | OpenSAH / dev"><meta property="og:description" content="What exists in the SAH suite and what each utility is for: opensah, sahconnect, sahapi, sahlink, sahsync, sahmesh, sahrdp, sahxfer, sah2grpc and sahcore, with status, a first command, and which one to reach for."><meta property="og:url" content="https://opensah.dev/docs/sah-suite.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>The SAH utilities | OpenSAH / dev</title><meta name="description" content="What exists in the SAH suite and what each utility is for: opensah, sahconnect, sahapi, sahlink, sahsync, sahmesh, sahrdp, sahxfer, sah2grpc and sahcore, the host components sash, systemapi-security, sash-init and nftapi, with status, a first command, and which one to reach for."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/sah-suite.html"><meta property="og:type" content="website"><meta property="og:title" content="The SAH utilities | OpenSAH / dev"><meta property="og:description" content="What exists in the SAH suite and what each utility is for: opensah, sahconnect, sahapi, sahlink, sahsync, sahmesh, sahrdp, sahxfer, sah2grpc and sahcore, the host components sash, systemapi-security, sash-init and nftapi, with status, a first command, and which one to reach for."><meta property="og:url" content="https://opensah.dev/docs/sah-suite.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
 <body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
 <main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Suite utilities</p><h1>The SAH utilities: what exists, and what each is for.</h1><p>The suite is a set of small command-line programs that an operator or an agent runs on their own machine against hosts enrolled in SystemAPI. Each does one job. This page is the map: every name, its job, its state today, and which one to reach for.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Suite utilities</strong><a href="/docs/sah-suite.html" aria-current="page">What exists and what for</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a><strong>Accessible tooling</strong><a href="/accessible-tooling.html">Overview</a><a href="/docs/missing-utils.html">Missing Utils</a><a href="/docs/rcdo.html">rcdo</a><a href="/docs/prtool.html">prtool</a><strong>File transfer</strong><a href="/transfer/index.html">Protocols, APIs & compatibility</a></aside><article class="docs-content">
 <nav aria-label="On this page"><ul>
@@ -15,13 +15,18 @@
 <li><a href="#sahxfer">sahxfer</a></li>
 <li><a href="#sah2grpc">sah2grpc</a></li>
 <li><a href="#sahcore">sahcore</a></li>
+<li><a href="#host">On the host</a></li>
+<li><a href="#sash">sash</a></li>
+<li><a href="#systemapi-security">systemapi-security</a></li>
+<li><a href="#sash-init">sash-init</a></li>
+<li><a href="#nftapi">nftapi</a></li>
 <li><a href="#install">Install</a></li>
 <li><a href="#status">How to read the states</a></li>
 <li><a href="#links">Links</a></li>
 </ul></nav>
 
 <h2 id="map">The map</h2>
-<p><strong>sah</strong> means Service Automation Hub. The hub is the platform (SystemAPI, ComputeAPI, the execution shell adssh) plus this suite of utilities. Every utility has its own repository, version and release lifecycle. Six are usable end to end today, one of them from a repository that is not public yet; one works between two machines you control but is not yet joined to the hub; one is a library with no command; and one is reserved.</p>
+<p><strong>sah</strong> means Service Automation Hub. The hub is the platform (SystemAPI, ComputeAPI, the execution shell adssh) plus this suite of utilities. Every utility has its own repository, version and release lifecycle. Six are usable end to end today, one of them from a repository that is not public yet; one works between two machines you control but is not yet joined to the hub; one is a library with no command; and one is reserved. Four more programs run on the enrolled host itself rather than on your machine; they are mapped under <a href="#host">On the host</a>.</p>
 <div class="table-scroll"><table class="status-table"><thead><tr><th scope="col">Tool</th><th scope="col">Job</th><th scope="col">State</th><th scope="col">Version</th></tr></thead><tbody>
 <tr><td><a href="#opensah">opensah</a></td><td>Local index. Lists every suite name with its role and state, and checks which binaries are on PATH.</td><td><span class="pill available">Available</span></td><td>0.1.0</td></tr>
 <tr><td><a href="#sahconnect">sahconnect</a></td><td>Log in, open a shell on a host through its agent, call the SystemAPI HTTP API, or pass arguments to adssh.</td><td><span class="pill available">Available</span></td><td>0.2.0</td></tr>
@@ -48,6 +53,10 @@
 <li><strong>I want to record exactly what a program I start reads and writes.</strong> <a href="#sahlink">sahlink run</a>.</li>
 <li><strong>I want to see which suite tools are installed here.</strong> <a href="#opensah">opensah ready</a>.</li>
 <li><strong>I want to drive and inspect SAH decisions from a test harness.</strong> <a href="#sah2grpc">sah2grpc</a>, once it has a binary.</li>
+<li><strong>I want to script what happens in a login session on a host.</strong> <a href="#sash">sash</a>, the shell the agent starts; <code>sash --needs</code> prints the grant a script asks for and runs nothing.</li>
+<li><strong>I want a local audit chain and intrusion checks on one Linux host.</strong> <a href="#systemapi-security">systemapi-security</a>, in early development.</li>
+<li><strong>I want to supervise services from strict JSON units instead of systemd.</strong> <a href="#sash-init">sash-init</a>, in early development and not yet PID 1 on a real host.</li>
+<li><strong>I want to change nftables through a local API.</strong> <a href="#nftapi">nftapi</a>, in early development.</li>
 <li><strong>I want to run commands under policy, with approvals and an audit chain.</strong> That is the shell, <a href="/tools.html#adssh">adssh</a>, not a suite utility.</li>
 </ul>
 <div class="notice"><p><strong>sahsync and sahxfer are not the same tool.</strong> sahsync moves many paths over the agent's file channel, one operation at a time, with an audit line per change. sahxfer moves exactly one regular file and puts the bytes on a separate UDP path with its own encryption, loss repair and pacing. Neither one grows a second login: both use the token that <code>sahconnect login</code> stores.</p></div>
@@ -147,6 +156,51 @@ sahxfer put --grant g.json --to 203.0.113.9:47100 ./image.bin</code></pre></div>
 <p>The name is reserved so it is not reused for a different product. There is no binary, module or service, and <code>opensah ready</code> lists it as <code>no-binary</code>. Nothing should be added there until a role is assigned.</p>
 <p><a href="https://github.com/afterdarksys/sahcore">Placeholder repository ↗</a></p>
 
+<h2 id="host">On the host</h2>
+<p>These programs run on the enrolled machine, not on the operator's. Each has its own repository; none has a packaged release.</p>
+<div class="table-scroll"><table class="status-table"><thead><tr><th scope="col">Tool</th><th scope="col">Job</th><th scope="col">State</th><th scope="col">Version</th></tr></thead><tbody>
+<tr><td><a href="#sash">sash</a></td><td>The login and emergency shell: a closed table of filters and agent verbs under a signed grant, with a scripting language.</td><td><span class="pill available">Available</span></td><td>unversioned, language v6</td></tr>
+<tr><td><a href="#systemapi-security">systemapi-security</a></td><td>Local security service <code>secsvc</code>: grants, an anchored audit chain, a host IDS and distro security modules.</td><td><span class="pill">Early development</span></td><td>unversioned</td></tr>
+<tr><td><a href="#sash-init">sash-init</a></td><td>Service supervisor <code>sahinit</code>, intended to replace systemd as PID 1.</td><td><span class="pill">Early development</span></td><td>unversioned</td></tr>
+<tr><td><a href="#nftapi">nftapi</a></td><td>A loopback JSON API for nftables with a closed rule language and threat-indicator feeds.</td><td><span class="pill">Early development</span></td><td>unversioned</td></tr>
+</tbody></table></div>
+
+<h2 id="sash">sash</h2>
+<span class="pill available">Available</span> <span class="pill">unversioned</span>
+<p>The login and emergency shell of the SAH fleet: one Go binary that runs a closed table of in-process filters and agent verbs under a signed <code>sash/1</code> grant. There is no <code>PATH</code> lookup and no bash fallback; an unknown name is refused. The scripting language has pipelines of bytes and of rows, functions, structured errors, secret bindings that print as <code>***</code> and cannot be a verb argument, plan mode, and record and replay against a fixture. <code>--needs</code> prints the grant a script asks for and <code>--lint</code> gives advisory findings; neither runs anything.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sash --needs -c 'unit status nginx'   # the grant this asks for; runs nothing
+sash --lint script.sash               # advisory findings; runs nothing
+sash --plan script.sash               # plan mode</code></pre></div>
+<p><strong>How it joins.</strong> On Linux the SystemAPI agent execs <code>sash --session</code> for an ordinary terminal session and passes the signed grant and a verb socket on file descriptors; a missing sash is <code>sash_missing</code>, never the passwd shell. Without <code>--session</code> the grant is empty: verbs are denied and filters still run. Break-glass stays in adssh, which can start sash with an emergency grant.</p>
+<p><strong>In development.</strong> Language v7 (path values, <code>defer</code> and <code>finally</code>, capture, <code>z</code> and <code>jump</code>) and sash service files as the unit language for sash-init.</p>
+<p><a href="https://github.com/afterdarksys/sash">Source and README ↗</a></p>
+
+<h2 id="systemapi-security">systemapi-security (secsvc)</h2>
+<span class="pill">Early development</span> <span class="pill">unversioned</span>
+<p>A local security service for one Linux machine. The binary is <code>secsvc</code>. Its only listener is a Unix socket, and each call carries a short-lived Ed25519 grant. It keeps an append-only audit chain in capped segments with a local anchor and a signed head that off-host witnesses can store, and it runs a host IDS: authentication failures from the auth log, file integrity against a baseline, and listeners against an allow list. Opt-in distro security modules cover Debian, Red Hat, Rocky, Ubuntu, Alpine and Arch. High findings page through ntfy; by default a page carries a kind, a count and a reference, not the host, a path or an address.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>secsvc keygen --seed-out /etc/secsvc/seed
+secsvc serve --dir /var/lib/secsvc --pub /etc/secsvc/pub.hex \
+  --host HOST --socket /run/secsvc/sock --interval 30s
+secsvc audit verify --dir /var/lib/secsvc</code></pre></div>
+<p><strong>What does not work yet.</strong> The segmented, anchored chain, the signed head and the detail-free pages are on hardening branches, not yet on the default branch. The SystemAPI agent does not collect signed heads, and agent and dashboard integration are not wired. Root on the host can still rewrite every local file; the off-host witness is meant to detect that.</p>
+<p><a href="https://github.com/afterdarksys/systemapi-security">Source and README ↗</a></p>
+
+<h2 id="sash-init">sash-init (sahinit)</h2>
+<span class="pill">Early development</span> <span class="pill">unversioned</span>
+<p>A Go userspace service supervisor intended to replace systemd as PID 1. The binary is <code>sahinit</code>. Units are strict JSON. It boots them in dependency waves with readiness checks and restart limits, runs each under an explicit identity, can apply a Landlock sandbox, puts each service in its own cgroup v2 cgroup with kill-all and memory, CPU and PID limits, and answers on a local control socket. <code>sahinit migrate</code> previews conversion from systemd, daemontools or OpenRC and never runs their scripts. <code>sahinit policy</code> verifies and caches signed boot-policy metadata that either never expires, bounded by a signed revocation floor, or must be renewed.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit plan --dir ./units
+sahinit supervise --dir ./units --socket /run/sahinit/sahinit.sock</code></pre></div>
+<p><strong>What does not work yet.</strong> It does not replace systemd on a host yet: <code>supervise</code> runs under an existing init with a delegated cgroup, and an experimental PID 1 mode is tested in virtual machines. Boot policy is metadata only and is not enforced. sash service files are the planned unit language.</p>
+<p><a href="https://github.com/afterdarksys/sash-init">Source and README ↗</a></p>
+
+<h2 id="nftapi">nftapi</h2>
+<span class="pill">Early development</span> <span class="pill">unversioned</span>
+<p>A localhost JSON API for nftables. <code>POST /v1</code> takes one JSON object with a bearer key and returns JSON; <code>GET /health</code> is unauthenticated. The listen address must be a literal loopback address. Rules use a closed match and verdict language (<code>accept</code>, <code>drop</code>, <code>reject</code>); a rule outside it is listed as opaque. Built-in feeds (<code>feed.list</code>, <code>feed.fetch</code>) return threat indicators and leave the ruleset unchanged.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>curl -sS -H "Authorization: Bearer $(cat nftapi.key)" -H 'Content-Type: application/json' \
+  -d '{"op":"ruleset.list"}' http://127.0.0.1:9789/v1</code></pre></div>
+<p><strong>What does not work yet.</strong> Named sets, for groups and for block and unblock, are planned and not in this build. SystemAPI is a planned client; nothing in the suite calls nftapi yet.</p>
+<p><a href="https://github.com/afterdarksys/nftapi">Source and README ↗</a></p>
+
 <h2 id="install">Install</h2>
 <p>Each installable tool is a Go module with a single command under <code>cmd/</code>; Go 1.26 or later builds them. Clone and install the ones you want, put <code>GOBIN</code> (or <code>$(go env GOPATH)/bin</code>) on PATH, then let opensah confirm what is there. The <a href="/getting-started.html">install guide</a> walks through the three core tools and the shell.</p>
 <div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>for r in opensah sahconnect sahapi sahlink sahmesh sahxfer; do
@@ -158,7 +212,7 @@ opensah ready</code></pre></div>
 
 <h2 id="status">How to read the states</h2>
 <ul>
-<li><strong>Available.</strong> Built, tested, and listed as a wired join in the suite contract: it works against today's SystemAPI.</li>
+<li><strong>Available.</strong> Built, tested, and listed as a wired join in the suite contract: it works against today's SystemAPI. For sash, that join is the agent starting it for a login session.</li>
 <li><strong>Early development.</strong> The program or library exists, but the hub or agent side it needs is not wired yet, so an end-to-end run is refused. <code>opensah tools</code> prints these as <code>early</code>.</li>
 <li><strong>opensah's <code>built</code> versus <code>optional</code>.</strong> <code>opensah ready</code> fails only when a <code>built</code> tool (sahconnect, sahapi, sahlink) is missing; <code>optional</code> tools such as sahsync and <code>early</code> ones such as sahxfer are reported without failing.</li>
 <li><strong>Unassigned.</strong> A reserved name with nothing behind it.</li>
@@ -171,7 +225,7 @@ opensah ready</code></pre></div>
 <li><a href="/getting-started.html">Install and first steps</a></li>
 <li><a href="https://github.com/afterdarksys">afterdarksys on GitHub</a></li>
 </ul>
-<p class="source-note">Built on 2026-10-22 from each tool's README and source and from the SystemAPI suite contract (docs/sah-suite.md), which decides what counts as wired when a README disagrees.</p>
+<p class="source-note">Built on 2026-10-22 from each tool's README and source and from the SystemAPI suite contract (docs/sah-suite.md), which decides what counts as wired when a README disagrees. The host components were added on 2026-11-23 from their READMEs and design documents.</p>
 
 </article></div></div></main>
 <footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

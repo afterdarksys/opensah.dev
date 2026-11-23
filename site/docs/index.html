@@ -28,6 +28,15 @@
 <a class="docs-card" href="/docs/sah-suite.html#sah2grpc"><span class="big-label">Early development</span><h3>sah2grpc</h3><p>gRPC tooling that drives <code>adssh sah</code> and prints the decisions. No command yet.</p></a>
 </div>
 
+<h2 id="host-components">On the host.</h2>
+<p>Programs that run on the enrolled machine itself. They are mapped on <a href="/docs/sah-suite.html#host">the suite page</a>.</p>
+<div class="docs-cards">
+<a class="docs-card" href="/docs/sah-suite.html#sash"><span class="big-label">Login shell</span><h3>sash</h3><p>The login and emergency shell the agent starts: a closed command table under a signed grant, with a scripting language.</p></a>
+<a class="docs-card" href="/docs/sah-suite.html#systemapi-security"><span class="big-label">Early development</span><h3>systemapi-security</h3><p>The <code>secsvc</code> local security service: grants, an anchored audit chain, a host IDS and distro modules.</p></a>
+<a class="docs-card" href="/docs/sah-suite.html#sash-init"><span class="big-label">Early development</span><h3>sash-init</h3><p>The <code>sahinit</code> service supervisor, intended to replace systemd as PID 1. Not PID 1 on a host yet.</p></a>
+<a class="docs-card" href="/docs/sah-suite.html#nftapi"><span class="big-label">Early development</span><h3>nftapi</h3><p>A loopback JSON API for nftables with a closed rule language and threat-indicator feeds.</p></a>
+</div>
+
 <h2 id="utility-suites">Utility suites.</h2>
 <p>Two larger toolkits and a pull request viewer that work on their own, on an engineer’s machine or in CI, rather than through the fleet gates. All three are designed for engineers who use screen readers, braille displays, magnification or large print; see <a href="/accessible-tooling.html">accessible tooling</a> for how they work together.</p>
 <div class="docs-cards">
