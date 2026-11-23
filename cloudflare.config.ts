@@ -4,7 +4,7 @@ export default defineConfig({
 	worker: {
 		name: "opensah-dev-site",
 		compatibilityDate: "2026-11-23",
-		workersDev: true,
+		workersDev: false,
 		previewUrls: false,
 		assets: {
 			htmlHandling: "auto-trailing-slash",
