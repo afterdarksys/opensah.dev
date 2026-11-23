@@ -23,7 +23,7 @@ The site is the static-assets Worker `opensah-dev-site`, deployed with Cloudflar
 2. Authenticate once: `npx cf auth login` (check with `npx cf auth whoami`).
 3. `npm run deploy` runs `scripts/deploy.sh`: the site check, a copy of `site/` without dot-files into `dist/`, then `cf deploy`. `npm run deploy -- --dry-run` builds and validates without uploading.
 
-`cloudflare.config.ts` holds the Worker: name, compatibility date, custom domains, workers.dev and preview URLs, and asset handling (`auto-trailing-slash` HTML, `site/404.html` for unknown paths). `wrangler.config.ts` only names `dist/` as the asset directory. `site/_headers` and `site/_redirects` apply as before. The former Pages project `opensah-dev` is kept, without custom domains, for rollback.
+`cloudflare.config.ts` holds the Worker: name, compatibility date, the zone routes `opensah.dev/*` and `www.opensah.dev/*`, workers.dev and preview URLs, and asset handling (`auto-trailing-slash` HTML, `site/404.html` for unknown paths). `wrangler.config.ts` only names `dist/` as the asset directory. `site/_headers` and `site/_redirects` apply as before. The Worker routes are what serve the site: they run in front of the proxied DNS records, which still point at the Pages project `opensah-dev` and its custom domains. Removing the routes from the config and redeploying falls back to Pages, which is the rollback; Pages only updates through a direct upload, so its content is older.
 
 The GitHub repository contains source; a push alone does not publish a deployment. No credential belongs in this repository.
 
