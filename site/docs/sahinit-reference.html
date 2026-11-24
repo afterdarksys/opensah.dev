@@ -3,7 +3,7 @@
 <body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
 <main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Host init guides</p><h1>sahinit commands, files and codes.</h1><p>Every command and flag, every file sahinit reads or writes with its ownership rules, the control protocol, and every refusal and diagnostic code with what to do about it.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Suite utilities</strong><a href="/docs/sah-suite.html">What exists and what for</a><strong>Host init guides</strong><a href="/docs/sahinit.html">sahinit</a><a href="/docs/sahinit-units.html">sahinit units</a><a href="/docs/sahinit-reference.html" aria-current="page">sahinit reference</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a><strong>Accessible tooling</strong><a href="/accessible-tooling.html">Overview</a><a href="/docs/missing-utils.html">Missing Utils</a><a href="/docs/rcdo.html">rcdo</a><a href="/docs/prtool.html">prtool</a><strong>File transfer</strong><a href="/transfer/index.html">Protocols, APIs & compatibility</a></aside><article class="docs-content">
 
-<span class="pill">Early development</span> <span class="pill">PID 1 experimental</span> <span class="pill">No tags or releases</span>
+<span class="pill">Early development</span> <span class="pill">PID 1 experimental</span> <span class="pill">No packaged releases</span> <span class="pill">GPL-3.0-or-later</span>
 <p><strong>This guide:</strong> <a href="/docs/sahinit.html">sahinit guide</a> · <a href="/docs/sahinit-units.html">Unit reference</a> · <a href="/docs/sahinit-reference.html" aria-current="page">Commands, files & codes</a></p>
 <nav aria-label="On this page"><ul>
 <li><a href="#command-line-reference">Command-line reference</a><ul>
@@ -11,6 +11,11 @@
 <li><a href="#sahinit-supervise">sahinit supervise</a></li>
 <li><a href="#sahinit-plan">sahinit plan</a></li>
 <li><a href="#sahinit-ctl">sahinit ctl</a></li>
+<li><a href="#sahinit-validate">sahinit validate</a></li>
+<li><a href="#sahinit-deploy">sahinit deploy</a></li>
+<li><a href="#sahinit-logs">sahinit logs</a></li>
+<li><a href="#sahinit-events">sahinit events</a></li>
+<li><a href="#sahinit-host">sahinit host</a></li>
 <li><a href="#sahinit-policy">sahinit policy</a></li>
 <li><a href="#sahinit-sash">sahinit sash</a></li>
 <li><a href="#sahinit-migrate">sahinit migrate</a></li>
@@ -23,6 +28,8 @@
 <li><a href="#cgroup-root">Cgroup root</a></li>
 <li><a href="#sash-files">sash files</a></li>
 <li><a href="#boot-policy-files">Boot policy files</a></li>
+<li><a href="#journal">Journal</a></li>
+<li><a href="#deployment-root">Deployment root</a></li>
 <li><a href="#pid-1-files">PID 1 files</a></li>
 </ul></li>
 <li><a href="#refusal-and-diagnostic-codes">Refusal and diagnostic codes</a><ul>
@@ -32,6 +39,10 @@
 <li><a href="#dependency-graph">Dependency graph</a></li>
 <li><a href="#executables-and-launch">Executables and launch</a></li>
 <li><a href="#lifecycle-and-control">Lifecycle and control</a></li>
+<li><a href="#live-catalog-changes-ctl-diff-apply-rollback-validate">Live catalog changes (<code>ctl diff</code>, <code>apply</code>, <code>rollback</code>, <code>validate</code>)</a></li>
+<li><a href="#codes-journal">Journal</a></li>
+<li><a href="#deployments-deploy-ctl-activate-supervise---deployment-root">Deployments (<code>deploy</code>, <code>ctl activate</code>, <code>supervise --deployment-root</code>)</a></li>
+<li><a href="#host-helpers-sahinit-host">Host helpers (<code>sahinit host</code>)</a></li>
 <li><a href="#control-socket-supervise-start">Control socket (supervise start)</a></li>
 <li><a href="#cgroups">Cgroups</a></li>
 <li><a href="#strict-boot-pid-1">Strict boot (PID 1)</a></li>
@@ -79,6 +90,10 @@ strings or request contents, except for <code>migrate</code> and <code>init</cod
 <td><a href="#sahinit-plan">print boot waves</a></td>
 </tr>
 <tr>
+<td><code>validate</code></td>
+<td><a href="#sahinit-validate">check a candidate catalog</a></td>
+</tr>
+<tr>
 <td><code>ctl</code></td>
 <td><a href="#sahinit-ctl">control a running supervisor</a></td>
 </tr>
@@ -89,6 +104,18 @@ strings or request contents, except for <code>migrate</code> and <code>init</cod
 <tr>
 <td><code>sash</code></td>
 <td><a href="#sahinit-sash">sash floors</a></td>
+</tr>
+<tr>
+<td><code>deploy</code></td>
+<td><a href="#sahinit-deploy">stage verified deployment generations</a></td>
+</tr>
+<tr>
+<td><code>logs</code>, <code>events</code></td>
+<td><a href="#sahinit-logs">read the journal</a></td>
+</tr>
+<tr>
+<td><code>host</code></td>
+<td><a href="#sahinit-host">host helpers: device wait, sd_notify adapter</a></td>
 </tr>
 <tr>
 <td><code>migrate</code></td>
@@ -109,13 +136,14 @@ strings or request contents, except for <code>migrate</code> and <code>init</cod
 with the init flags below. No other command can run as PID 1.</p>
 <h3 id="sahinit-init">sahinit init</h3>
 <div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit init [--dir DIR] [--socket PATH] [--recovery EXECUTABLE]
-             [--shutdown-timeout DURATION] [--sash PATH]
-             [--sash-fleet-pub PATH] [--sash-floor-dir DIR]
+             [--shutdown-timeout DURATION] [--log-dir DIR]
+             [--deployment-root DIR --trust FILE [--trust-system-clock]]
+             [--sash PATH] [--sash-fleet-pub PATH] [--sash-floor-dir DIR]
 </code></pre></div>
 <p>Experimental Linux PID 1 parent. It refuses unless it is PID 1 and runs as
 root: as an ordinary process it prints <code>init requires root Linux PID 1</code> (off
 Linux, <code>init requires Linux PID 1</code>) and exits 1. As PID 1 it never exits. See
-<a href="/docs/sahinit.html#first-boot-as-pid-1">operations</a> and <a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/host-init.md">host init</a>.</p>
+<a href="/docs/sahinit.html#first-boot-as-pid-1">operations</a> and <a href="https://github.com/afterdarksys/sash-init/blob/feat/host-ops/docs/host-init.md">host init</a>.</p>
 <div class="table-scroll"><table class="status-table">
 <thead>
 <tr>
@@ -151,6 +179,30 @@ Linux, <code>init requires Linux PID 1</code>) and exits 1. As PID 1 it never ex
 <td>From <code>1s</code> to <code>10m</code>. How long PID 1 waits for the supervisor to stop before it terminates every remaining process.</td>
 </tr>
 <tr>
+<td><code>--log-dir</code></td>
+<td>path</td>
+<td>empty (no journal)</td>
+<td>Absolute when set. Passed on as <code>supervise --log-dir</code>.</td>
+</tr>
+<tr>
+<td><code>--deployment-root</code></td>
+<td>path</td>
+<td>empty</td>
+<td>Absolute when set; needs <code>--trust</code>. The supervisor runs the active <a href="https://github.com/afterdarksys/sash-init/blob/feat/host-ops/docs/deployments.md">deployment</a> generation instead of <code>--dir</code>.</td>
+</tr>
+<tr>
+<td><code>--trust</code></td>
+<td>path</td>
+<td>empty</td>
+<td>Absolute; only with <code>--deployment-root</code>. The boot-policy trust file.</td>
+</tr>
+<tr>
+<td><code>--trust-system-clock</code></td>
+<td>bool</td>
+<td>false</td>
+<td>Only with <code>--deployment-root</code>. Passed on; see <code>supervise</code>.</td>
+</tr>
+<tr>
 <td><code>--sash</code></td>
 <td>path</td>
 <td>empty</td>
@@ -171,8 +223,12 @@ Linux, <code>init requires Linux PID 1</code>) and exits 1. As PID 1 it never ex
 </tbody>
 </table></div>
 <p>The supervisor is always started as
-<code>sahinit supervise --dir DIR --socket PATH --boot-strict [--sash ...] [--sash-fleet-pub ...] [--sash-floor-dir ...]</code>.</p>
-<p>Errors: an extra argument, a relative path or a timeout outside the range is
+<code>sahinit supervise --dir DIR --socket PATH --boot-strict [--log-dir ...] [--sash ...] [--sash-fleet-pub ...] [--sash-floor-dir ...]</code>,
+or with <code>--deployment-root DIR --trust FILE [--trust-system-clock]</code> in place
+of <code>--dir DIR</code>.</p>
+<p>Errors: an extra argument, a relative path, <code>--trust</code> or
+<code>--trust-system-clock</code> without <code>--deployment-root</code> (or the reverse), or a
+timeout outside the range is
 <code>invalid init configuration</code>; an unknown flag or a value that does not parse
 is Go's flag error text (for example <code>flag provided but not defined: -x</code>). As
 PID 1 either is logged as <code>sahinit-init: recovery: setup: ERROR</code> and PID 1
@@ -181,7 +237,10 @@ enters recovery (it does not exit). Signals to PID 1 are listed in
 <h3 id="sahinit-supervise">sahinit supervise</h3>
 <div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit supervise --dir DIR --socket PATH [--uid UID]... [--gid GID]
                   [--no-cgroups] [--cgroup-sweep DURATION] [--boot-strict]
-                  [--sash PATH] [--sash-fleet-pub PATH] [--sash-floor-dir DIR]
+                  [--log-dir DIR] [--sash PATH] [--sash-fleet-pub PATH]
+                  [--sash-floor-dir DIR]
+sahinit supervise --deployment-root DIR --trust FILE [--trust-system-clock]
+                  --socket PATH [the other flags above]
 </code></pre></div>
 <p>Loads the unit catalog, opens the delegated cgroup root, prepares sash units,
 binds the control socket, boots the boot units in dependency waves and serves
@@ -200,8 +259,32 @@ every service in reverse dependency order.</p>
 <tr>
 <td><code>--dir</code></td>
 <td>path</td>
-<td>required</td>
-<td>The unit directory. See <a href="/docs/sahinit-units.html#the-unit-directory">units</a>.</td>
+<td>required unless <code>--deployment-root</code></td>
+<td>The unit directory. See <a href="/docs/sahinit-units.html#the-unit-directory">units</a>. Exactly one of <code>--dir</code> and <code>--deployment-root</code> is given.</td>
+</tr>
+<tr>
+<td><code>--deployment-root</code></td>
+<td>path</td>
+<td>none</td>
+<td>The <a href="https://github.com/afterdarksys/sash-init/blob/feat/host-ops/docs/deployments.md">deployment</a> root: the units are the active generation's, each start is admitted by its signed policy, and <code>ctl activate</code> is enabled. Units the cgroup root cannot limit refuse the start (<code>boot_refused</code>), as in strict boot.</td>
+</tr>
+<tr>
+<td><code>--trust</code></td>
+<td>path</td>
+<td>none</td>
+<td>Required with, and only with, <code>--deployment-root</code>: the boot-policy trust file (as <code>policy --trust</code>).</td>
+</tr>
+<tr>
+<td><code>--trust-system-clock</code></td>
+<td>bool</td>
+<td>false</td>
+<td>Only with <code>--deployment-root</code>. Accept the system clock as the time anchor for expiring (<code>renew</code>) policies; without it their admission fails closed (<code>policy_clock_uncertain</code>). <code>never</code> policies do not read the clock.</td>
+</tr>
+<tr>
+<td><code>--log-dir</code></td>
+<td>path</td>
+<td>none</td>
+<td>Absolute. The <a href="/docs/sahinit.html#journal">journal</a> directory. If it cannot be opened (read-only, wrong owner or mode, held by another supervisor) the supervisor prints <code>journal_unavailable TOKEN</code> and runs without a journal; it never refuses the start for it.</td>
 </tr>
 <tr>
 <td><code>--socket</code></td>
@@ -237,7 +320,7 @@ every service in reverse dependency order.</p>
 <td><code>--boot-strict</code></td>
 <td>bool</td>
 <td>false</td>
-<td>Host-boot mode, used by <code>init</code>. Any refused unit file, refused limit or refused sash unit refuses the whole start (<code>boot_refused</code>); a failed boot wave (its token is printed), or a boot unit that later becomes <code>failed</code> (a non-zero exit, a signal, <code>restart_limit</code>; logged <code>boot_service_failed NAME</code>), stops the supervisor with exit 1. A <code>simple</code> boot unit that exits 0 without restart becomes <code>stopped</code> and is not caught.</td>
+<td>Host-boot mode, used by <code>init</code>. Any refused unit file, refused limit or refused sash unit refuses the whole start (<code>boot_refused</code>). Every boot unit is <strong>essential</strong> unless its unit says <code>&quot;essential&quot;: false</code>: when the boot waves end, an essential unit that is not ready (failed, never ready, crashed and waiting out a restart delay, blocked on a failed provider) stops the supervisor with exit 1 (<code>boot_service_failed NAME</code>); afterwards, one that becomes <code>failed</code> (a non-zero exit, a signal, <code>restart_limit</code>, <code>watchdog</code>), becomes <code>stopped</code> on its own (a <code>simple</code> unit that exits 0 without restart), or whose <code>needs</code> provider failed for good, does the same. After boot an automatic restart in progress is not a failure, but a crash loop ends in <code>restart_limit</code> (see <a href="/docs/sahinit-units.html#types-readiness-and-restart">restart</a>). Units marked <code>&quot;essential&quot;: false</code> fail alone.</td>
 </tr>
 <tr>
 <td><code>--sash</code></td>
@@ -280,8 +363,14 @@ run <code>plan</code> to see which file.</li>
 <li>With cgroups: <code>cgroup_root_unprotected ROOT</code> when no controller is enabled
 below the root; <code>cgroup_leftover NAME.service</code> for each cgroup an earlier
 instance left (a cgroup that will not empty is <code>cgroup_stuck</code>, exit 2).</li>
+<li>Open the journal when <code>--log-dir</code> is given (<code>journal_unavailable TOKEN</code>
+when it cannot be; the start goes on).</li>
 <li>Boot. A boot error is printed as its token; without <code>--boot-strict</code> the
-supervisor keeps running.</li>
+supervisor keeps running. Every 200 ms afterwards it reconciles
+dependencies: a running unit whose <code>needs</code> provider is no longer ready is
+stopped and marked <code>blocked</code>, and is started again when the provider is
+ready (in dependency order). A unit an operator stopped is not desired and
+stays stopped.</li>
 </ol>
 <p>Exit status: 0 after a normal stop by signal; 1 when strict boot failed or the
 socket server failed; 2 when startup was refused.</p>
@@ -316,10 +405,13 @@ Exit 0 with a plan; exit 2 with a usage error or a catalog or graph refusal
 (the token is printed).</p>
 <h3 id="sahinit-ctl">sahinit ctl</h3>
 <div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit ctl --socket PATH status [NAME]
-sahinit ctl --socket PATH diagnostics|start|stop|restart|reload|check NAME
+sahinit ctl --socket PATH diagnostics|explain|start|stop|restart|reload|check NAME
+sahinit ctl --socket PATH --dir DIR diff|apply
+sahinit ctl --socket PATH rollback|activate
 </code></pre></div>
-<p>Sends one framed JSON request (<code>{&quot;op&quot;:OP,&quot;name&quot;:NAME}</code>) to a running
-supervisor and prints the JSON response on stdout.</p>
+<p>Sends one framed JSON request (<code>{&quot;op&quot;:OP,&quot;name&quot;:NAME}</code>, with <code>&quot;arg&quot;:DIR</code> for
+<code>diff</code> and <code>apply</code>) to a running supervisor and prints the JSON response on
+stdout.</p>
 <div class="table-scroll"><table class="status-table">
 <thead>
 <tr>
@@ -335,6 +427,12 @@ supervisor and prints the JSON response on stdout.</p>
 <td>path</td>
 <td>required</td>
 <td>The supervisor's control socket.</td>
+</tr>
+<tr>
+<td><code>--dir</code></td>
+<td>path</td>
+<td>none</td>
+<td>Required by <code>diff</code> and <code>apply</code>, refused by every other operation. An absolute unit directory, read by the supervisor (<code>catalog_path</code> when relative).</td>
 </tr>
 </tbody>
 </table></div>
@@ -382,8 +480,36 @@ supervisor and prints the JSON response on stdout.</p>
 <td>required</td>
 <td>Run a sash unit's <code>check</code> entry, read-only.</td>
 </tr>
+<tr>
+<td><code>explain</code></td>
+<td>required</td>
+<td><code>{name, desired, state, reason, blocked_by}</code>: why a unit is not running. <code>blocked_by</code> lists <code>needs</code> providers that are not ready; <code>reason</code> is the last error, or <code>administratively_stopped</code> for a unit an operator stopped.</td>
+</tr>
+<tr>
+<td><code>diff</code></td>
+<td>none (<code>--dir</code>)</td>
+<td><strong>Root only.</strong> Load and plan the catalog in DIR exactly as <code>validate</code> does and answer <code>{added, removed, changed, affected}</code> against the running catalog; changes nothing. <code>affected</code> adds every unit that transitively <code>needs</code> a changed one.</td>
+</tr>
+<tr>
+<td><code>apply</code></td>
+<td>none (<code>--dir</code>)</td>
+<td><strong>Root only.</strong> Replace the running catalog with DIR's: stop the affected units (dependents first), start the affected units that are desired (in dependency order). Unaffected units keep their processes, output and restart budgets. A failed replacement restores the old catalog (<code>apply_rolled_back</code>, or <code>rollback_failed</code>). Refused with a deployment (<code>signed_activation_required</code>), with sash units in either catalog (<code>catalog_sash</code>), while another change runs (<code>busy</code>), and before the boot waves end (<code>boot_in_progress</code>). Not written to disk: a restarted supervisor reads <code>--dir</code> again.</td>
+</tr>
+<tr>
+<td><code>rollback</code></td>
+<td>none</td>
+<td><strong>Root only.</strong> Apply the catalog that the last <code>apply</code> replaced (<code>no_previous_catalog</code> when none), with its desired states. Refused with a deployment (<code>new_policy_required</code>) and before the boot waves end (<code>boot_in_progress</code>).</td>
+</tr>
+<tr>
+<td><code>activate</code></td>
+<td>none</td>
+<td><strong>Root only.</strong> With <code>--deployment-root</code>: verify the pending generation, check it is fresh, admit every unit, apply it as <code>apply</code> does, then make it active on disk (see <a href="https://github.com/afterdarksys/sash-init/blob/feat/host-ops/docs/deployments.md">deployments</a>). <code>deployment_not_configured</code> without a deployment; <code>boot_in_progress</code> until the boot waves end.</td>
+</tr>
 </tbody>
 </table></div>
+<p><code>diff</code>, <code>apply</code>, <code>rollback</code> and <code>activate</code> are refused with <code>root_required</code>
+unless the peer's effective uid is 0, even when <code>--uid</code> allows that peer
+<code>status</code>, <code>start</code> and <code>stop</code>.</p>
 <p>Exit status: 0 when the response says <code>&quot;ok&quot;:true</code>; 1 when it says
 <code>&quot;ok&quot;:false</code> (the response is still printed), or when connecting (5 s
 timeout), writing or reading fails (prints <code>failed</code>); 2 for usage errors and
@@ -391,11 +517,232 @@ timeout), writing or reading fails (prints <code>failed</code>); 2 for usage err
 11 minutes, enough for the longest stop plus the longest readiness wait.</p>
 <p>The socket protocol also has <code>oneshot</code> with an <code>arg</code> field, which <code>ctl</code> does
 not expose; see <a href="/docs/sahinit-reference.html#control-protocol">the control protocol</a>.</p>
-<p>Errors in the response (<code>&quot;error&quot;</code>): <code>uid_denied</code>, <code>peer_supervised</code>, <code>busy</code>,
+<p>Errors in the response (<code>&quot;error&quot;</code>): <code>uid_denied</code>, <code>peer_supervised</code>, <code>root_required</code>, <code>busy</code>,
 <code>not_found</code>, <code>arg_required</code>, <code>unknown_op</code>, <code>frame_size</code>, <code>failed</code>, and any
 start, stop or sash token, for example <code>needs_failed</code>, <code>needs_not_ready</code>,
 <code>timeout</code>, <code>cgroup_stuck</code>, <code>sash_grant_revoked</code>, <code>not_sash</code>, <code>no_entry</code>,
 <code>not_running</code>, <code>unhealthy</code>. See <a href="/docs/sahinit-reference.html#refusal-and-diagnostic-codes">codes</a>.</p>
+<h3 id="sahinit-validate">sahinit validate</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit validate --dir DIR
+</code></pre></div>
+<p>Loads the catalog in DIR as <code>supervise</code> does (without cgroups or sash
+<code>--describe</code>) and plans it. Prints one JSON line
+<code>{valid, error, refused, waves}</code>: <code>refused</code> maps each refused file to its
+token (any refused file makes the catalog invalid, <code>catalog_refused</code>), <code>waves</code>
+are the boot waves. Exit 0 when valid, 1 when not, 2 for a usage error.</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Flag</th>
+<th scope="col">Type</th>
+<th scope="col">Default</th>
+<th scope="col">Constraints</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--dir</code></td>
+<td>path</td>
+<td>required</td>
+<td>The candidate unit directory.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="sahinit-deploy">sahinit deploy</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit deploy stage --root DIR --trust FILE --bundle DIR --manifest FILE
+                     --document FILE [--trust-system-clock]
+sahinit deploy status|bootstrap --root DIR --trust FILE [--trust-system-clock]
+</code></pre></div>
+<p>Stages and inspects verified deployment generations; see
+<a href="https://github.com/afterdarksys/sash-init/blob/feat/host-ops/docs/deployments.md">deployments</a> for the bundle format.</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Flag</th>
+<th scope="col">Type</th>
+<th scope="col">Default</th>
+<th scope="col">Constraints</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--root</code></td>
+<td>path</td>
+<td>required</td>
+<td>Absolute and clean (<code>deployment_path</code>). Created 0700 when missing; must pass the trusted walk and have no group or other access (<code>deployment_perm</code>).</td>
+</tr>
+<tr>
+<td><code>--trust</code></td>
+<td>path</td>
+<td>required</td>
+<td>The boot-policy trust file.</td>
+</tr>
+<tr>
+<td><code>--trust-system-clock</code></td>
+<td>bool</td>
+<td>false</td>
+<td>Accept the system clock as the time anchor; without it an expiring policy is refused (<code>policy_clock_uncertain</code>).</td>
+</tr>
+<tr>
+<td><code>--bundle</code></td>
+<td>path</td>
+<td><code>stage</code> only (required)</td>
+<td>The candidate bundle directory.</td>
+</tr>
+<tr>
+<td><code>--manifest</code></td>
+<td>path</td>
+<td><code>stage</code> only (required)</td>
+<td>The manifest; its exact bytes must hash to the policy's <code>catalog_sha256</code>. At most 256 KiB (<code>manifest_read</code>).</td>
+</tr>
+<tr>
+<td><code>--document</code></td>
+<td>path</td>
+<td><code>stage</code> only (required)</td>
+<td>The signed policy envelope.</td>
+</tr>
+</tbody>
+</table></div>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Operation</th>
+<th scope="col">Output</th>
+<th scope="col">Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>stage</code></td>
+<td><code>{&quot;pending&quot;:ID}</code></td>
+<td>Verify the policy and every file, copy the bundle into a new private generation, cache the policy and make it the pending generation. Staging the same generation again is idempotent.</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td><code>{&quot;active&quot;,&quot;pending&quot;,&quot;previous&quot;}</code></td>
+<td>Show the pointers.</td>
+</tr>
+<tr>
+<td><code>bootstrap</code></td>
+<td><code>{&quot;active&quot;:ID}</code></td>
+<td>First installation only: with no active generation, verify and admit the pending one and make it active (<code>bootstrap_refused</code> otherwise). Later changes use <code>ctl activate</code>.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Exit 1 with the token on stderr for a refusal; 2 for a usage error.</p>
+<h3 id="sahinit-logs">sahinit logs</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit logs [--dir DIR] [--unit NAME] [--boot ID] [--since SEQUENCE]
+             [--contains TEXT] [--follow]
+</code></pre></div>
+<p>Prints journal records (one JSON object per line:
+<code>{sequence, boot_id, time, unit, stream, data}</code>, with <code>data</code> base64 encoded)
+of the stdout and stderr streams. See <a href="/docs/sahinit.html#journal">the journal</a>.</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Flag</th>
+<th scope="col">Type</th>
+<th scope="col">Default</th>
+<th scope="col">Constraints</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--dir</code></td>
+<td>path</td>
+<td><code>/var/log/sahinit</code></td>
+<td>The journal directory (the supervisor's <code>--log-dir</code>).</td>
+</tr>
+<tr>
+<td><code>--unit</code></td>
+<td>string</td>
+<td>all</td>
+<td>Only this unit (<code>sahinit</code> for the supervisor's own events).</td>
+</tr>
+<tr>
+<td><code>--boot</code></td>
+<td>string</td>
+<td>all</td>
+<td>Only this boot ID (<code>/proc/sys/kernel/random/boot_id</code> of the writing boot).</td>
+</tr>
+<tr>
+<td><code>--since</code></td>
+<td>uint64</td>
+<td>0</td>
+<td>Only records with a larger sequence.</td>
+</tr>
+<tr>
+<td><code>--contains</code></td>
+<td>string</td>
+<td>none</td>
+<td>Only records whose data or event contains TEXT.</td>
+</tr>
+<tr>
+<td><code>--follow</code></td>
+<td>bool</td>
+<td>false</td>
+<td>Keep polling (every 250 ms) until SIGINT or SIGTERM.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Exit 1 with <code>journal_read</code> when the journal cannot be read (missing, wrong
+owner or mode, a malformed complete record); 2 for a usage error. Reading
+needs the journal's owner (root under PID 1): the files are 0600.</p>
+<h3 id="sahinit-events">sahinit events</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit events [--dir DIR] [--unit NAME] [--boot ID] [--since SEQUENCE]
+               [--contains TEXT] [--follow]
+</code></pre></div>
+<p>As <code>logs</code>, for the <code>event</code> stream: the lifecycle events of
+<code>ctl diagnostics</code> (<code>{&quot;sequence&quot;,&quot;time&quot;,&quot;kind&quot;,&quot;pid&quot;,&quot;code&quot;,&quot;exit&quot;}</code> in <code>event</code>) and the
+supervisor's <code>supervisor_started</code>.</p>
+<h3 id="sahinit-host">sahinit host</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit host device-wait --path DEVICE [--timeout DURATION]
+sahinit host notify-adapter [--watchdog DURATION] -- PROGRAM [ARG]...
+</code></pre></div>
+<p>Linux-only helpers meant to be a unit's <code>exec</code> (off Linux they print
+<code>host helpers require Linux</code> and exit 1).</p>
+<p><code>device-wait</code> polls every 50 ms until DEVICE (absolute) exists as a device
+node, then exits 0; after <code>--timeout</code> (default <code>30s</code>, at most <code>5m</code>) it prints
+<code>device_timeout</code> and exits 1. Use it as a oneshot that other units <code>need</code>.</p>
+<p><code>notify-adapter</code> runs PROGRAM as its child with <code>NOTIFY_SOCKET</code> set to a
+private datagram socket and, with <code>--watchdog</code> (at most <code>5m</code>),
+<code>WATCHDOG_USEC</code>. It accepts only <code>READY=1</code> and <code>WATCHDOG=1</code>, and only from its
+direct child's credentials (<code>SO_PASSCRED</code>); it writes one byte to the unit's
+notify pipe (fd 3, <code>SAHINIT_READY_FD=3</code>, else <code>notify_pipe_missing</code>) for
+readiness and one per heartbeat after it. It forwards SIGTERM, SIGINT and
+SIGHUP to the child and exits with its status. There is no <code>MAINPID</code>,
+<code>FDSTORE</code>, <code>EXTEND_TIMEOUT</code> or barrier support: run the program in the
+foreground. Use it with <code>&quot;ready&quot;: &quot;notify&quot;</code> and a matching unit <code>watchdog</code>.</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Flag</th>
+<th scope="col">Type</th>
+<th scope="col">Default</th>
+<th scope="col">Constraints</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--path</code></td>
+<td>path</td>
+<td>required (<code>device-wait</code>)</td>
+<td>Absolute device path.</td>
+</tr>
+<tr>
+<td><code>--timeout</code></td>
+<td>duration</td>
+<td><code>30s</code></td>
+<td><code>device-wait</code>: more than 0, at most <code>5m</code>.</td>
+</tr>
+<tr>
+<td><code>--watchdog</code></td>
+<td>duration</td>
+<td><code>0</code> (none)</td>
+<td><code>notify-adapter</code>: from 0 to <code>5m</code>; the interval exported as <code>WATCHDOG_USEC</code>.</td>
+</tr>
+</tbody>
+</table></div>
 <h3 id="sahinit-policy">sahinit policy</h3>
 <div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit policy verify|cache|status|floor-install|floor-show --trust FILE
                [--document FILE] [--cache DIR] [--trust-system-clock]
@@ -405,7 +752,7 @@ sahinit policy refresh --trust FILE --cache DIR --endpoint HTTPS_URL
 <p>Verifies, caches and inspects signed boot-policy metadata. <strong>Metadata only:</strong>
 nothing here admits or blocks a unit; every report carries
 <code>&quot;enforcement&quot;:&quot;metadata_only&quot;</code>. Formats are in
-<a href="/docs/sahinit-reference.html#boot-policy-files">files</a> and <a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/boot-policy.md">boot policy</a>.</p>
+<a href="/docs/sahinit-reference.html#boot-policy-files">files</a> and <a href="https://github.com/afterdarksys/sash-init/blob/feat/host-ops/docs/boot-policy.md">boot policy</a>.</p>
 <div class="table-scroll"><table class="status-table">
 <thead>
 <tr>
@@ -498,7 +845,7 @@ nothing here admits or blocks a unit; every report carries
 <tr>
 <td><code>refresh</code></td>
 <td>one JSON event per line</td>
-<td>see <a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/boot-policy.md#renewal-worker-renew-mode-only">the renewal worker</a>.</td>
+<td>see <a href="https://github.com/afterdarksys/sash-init/blob/feat/host-ops/docs/boot-policy.md#renewal-worker-renew-mode-only">the renewal worker</a>.</td>
 </tr>
 </tbody>
 </table></div>
@@ -550,7 +897,7 @@ usage text and exits 2.</p>
 <div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit migrate --from FORMAT --source DIR [--out NEW_DIR] [--boot]
 </code></pre></div>
 <p>Converts a standalone, exported service catalog. It never runs source scripts
-or touches the running init system. See <a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/migration.md">migration</a>.</p>
+or touches the running init system. See <a href="https://github.com/afterdarksys/sash-init/blob/feat/host-ops/docs/migration.md">migration</a>.</p>
 <div class="table-scroll"><table class="status-table">
 <thead>
 <tr>
@@ -754,6 +1101,41 @@ uid and is not group- or other-writable.</li>
 <td></td>
 </tr>
 <tr>
+<td>Journal directory</td>
+<td><code>--log-dir</code> (<code>supervise</code>, <code>init</code>), <code>--dir</code> (<code>logs</code>, <code>events</code>)</td>
+<td><code>supervise</code> writes, <code>logs</code> and <code>events</code> read</td>
+<td>trusted walk; no group or other access (0700); created 0700 when missing</td>
+<td>none for <code>supervise</code> and <code>init</code> (no journal); <code>/var/log/sahinit</code> for <code>logs</code> and <code>events</code></td>
+</tr>
+<tr>
+<td><code>current.jsonl</code>, <code>archive.N.jsonl</code>, <code>lock</code>, <code>view.lock</code></td>
+<td></td>
+<td>the journal</td>
+<td>0600, regular, one link, owned by root or the effective uid</td>
+<td>in the journal directory</td>
+</tr>
+<tr>
+<td>Deployment root</td>
+<td><code>--deployment-root</code> (<code>supervise</code>, <code>init</code>), <code>--root</code> (<code>deploy</code>)</td>
+<td><code>supervise</code>, <code>deploy</code></td>
+<td>absolute, clean; trusted walk; no group or other access; created 0700</td>
+<td></td>
+</tr>
+<tr>
+<td><code>state.json</code>, <code>lock</code>, <code>policy/</code>, <code>generations/ID/</code></td>
+<td></td>
+<td>deployments</td>
+<td>0600 files, 0700 directories; artifacts 0555, unit files 0400</td>
+<td>in the deployment root</td>
+</tr>
+<tr>
+<td>Bundle, manifest</td>
+<td><code>--bundle</code>, <code>--manifest</code></td>
+<td><code>deploy stage</code></td>
+<td>each file: owner and mode rule, regular, not a symlink, trusted parent</td>
+<td></td>
+</tr>
+<tr>
 <td>Recovery program</td>
 <td><code>init --recovery</code></td>
 <td>PID 1</td>
@@ -761,9 +1143,23 @@ uid and is not group- or other-writable.</li>
 <td>none (disabled)</td>
 </tr>
 <tr>
-<td><code>/proc</code>, <code>/sys</code>, <code>/dev</code>, <code>/run</code>, <code>/sys/fs/cgroup</code></td>
+<td><code>/proc</code>, <code>/sys</code>, <code>/dev</code>, <code>/dev/pts</code>, <code>/dev/shm</code>, <code>/run</code>, <code>/sys/fs/cgroup</code></td>
 <td></td>
 <td>PID 1 mounts them</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>/tmp</code></td>
+<td></td>
+<td>PID 1 creates it (sticky, 1777) when missing</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>/proc/swaps</code></td>
+<td></td>
+<td>PID 1 at shutdown (<code>swapoff</code>)</td>
 <td></td>
 <td></td>
 </tr>
@@ -818,10 +1214,14 @@ the supervisor's uid and refuses a connection; anything else at the path is
 many bytes of JSON, 1 to 64 KiB (<code>frame_size</code>). The server reads the request
 within 5 s and serves at most 32 connections at once (<code>busy</code> beyond that).</p>
 <p>Request: <code>{&quot;op&quot;: OP, &quot;name&quot;: NAME, &quot;arg&quot;: ARG}</code> with only those keys; <code>op</code> is
-required. Operations: <code>status</code>, <code>diagnostics</code>, <code>start</code>, <code>stop</code>, <code>restart</code>,
-<code>oneshot</code> (with <code>arg</code>), <code>reload</code>, <code>check</code>.</p>
-<p>Response: <code>{&quot;ok&quot;: bool, &quot;error&quot;: TOKEN, &quot;rows&quot;: [...], &quot;diagnostics&quot;: {...}}</code>.
-<code>rows</code> is present for status and after a mutation on a known name.</p>
+required. Operations: <code>status</code>, <code>diagnostics</code>, <code>explain</code>, <code>start</code>, <code>stop</code>,
+<code>restart</code>, <code>oneshot</code> (with <code>arg</code>), <code>reload</code>, <code>check</code>; and, for a peer whose
+effective uid is 0 only (<code>root_required</code>), <code>diff</code> and <code>apply</code> (with <code>arg</code>, an
+absolute unit directory), <code>rollback</code> and <code>activate</code>.</p>
+<p>Response: <code>{&quot;ok&quot;: bool, &quot;error&quot;: TOKEN, &quot;rows&quot;: [...], &quot;diagnostics&quot;: {...}, &quot;explanation&quot;: {...}, &quot;diff&quot;: {...}}</code>. <code>rows</code> is present for status and after
+a mutation on a known name; <code>explanation</code> for <code>explain</code>
+(<code>{name, desired, state, reason, blocked_by}</code>); <code>diff</code> for the catalog
+operations (<code>{added, removed, changed, affected, generation, rolled_back}</code>).</p>
 <p>Status row:</p>
 <div class="table-scroll"><table class="status-table">
 <thead>
@@ -833,7 +1233,15 @@ required. Operations: <code>status</code>, <code>diagnostics</code>, <code>start
 <tbody>
 <tr>
 <td><code>name</code>, <code>state</code>, <code>pid</code>, <code>ready</code>, <code>restarts</code></td>
-<td>state is <code>stopped</code>, <code>starting</code>, <code>running</code>, <code>stopping</code>, <code>exited</code> or <code>failed</code></td>
+<td>state is <code>stopped</code>, <code>starting</code>, <code>running</code>, <code>stopping</code>, <code>exited</code>, <code>failed</code> or <code>blocked</code></td>
+</tr>
+<tr>
+<td><code>desired</code></td>
+<td>whether the unit should run: set by boot and <code>start</code>, cleared by <code>stop</code></td>
+</tr>
+<tr>
+<td><code>essential</code></td>
+<td>the unit's resolved <code>essential</code> (strict boot only acts on it)</td>
 </tr>
 <tr>
 <td><code>sandbox</code></td>
@@ -871,7 +1279,8 @@ required. Operations: <code>status</code>, <code>diagnostics</code>, <code>start
 </table></div>
 <p>Diagnostics (<code>diagnostics</code> op, one service): <code>name</code>, <code>cgroups</code>, <code>stdout</code> and
 <code>stderr</code> (each <code>{data: base64, dropped: N}</code>, the last 8192 bytes), <code>events</code>
-(the last 64: <code>{sequence, time, kind, pid, code, exit}</code>) and <code>last_exit</code>
+(the last 64: <code>{sequence, time, kind, pid, code, exit}</code>), <code>journal</code>
+(<code>{dropped, error}</code> of the <code>--log-dir</code> journal, zero without one) and <code>last_exit</code>
 (<code>{code, signal, time}</code>; a signal exit has code -1). Event kinds: <code>starting</code>,
 <code>started</code>, <code>ready</code>, <code>stopping</code>, <code>exited</code>, <code>ended</code>, <code>launch_failed</code>,
 <code>timeout</code>, <code>restart_limit</code>, <code>cgroup_stuck</code>, and for sash units
@@ -925,7 +1334,7 @@ a table that is not valid JSON logs <code>sash_mount_state_corrupt</code>; a tab
 from another boot is discarded. The table is rewritten as mounts change.</li>
 </ul>
 <h3 id="boot-policy-files">Boot policy files</h3>
-<p>Formats are specified in <a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/boot-policy.md">boot policy</a>; the rules on disk:</p>
+<p>Formats are specified in <a href="https://github.com/afterdarksys/sash-init/blob/feat/host-ops/docs/boot-policy.md">boot policy</a>; the rules on disk:</p>
 <ul>
 <li><strong>Trust file</strong> (<code>--trust</code>): strict JSON with <code>tenant_id</code>, <code>host_id</code>,
 <code>enrollment_id</code>, <code>recovery_profile_id</code> (each
@@ -945,15 +1354,43 @@ example <code>install -d -m 700 /var/lib/sahinit-policy</code>.</li>
 without spaces and at most one trailing newline. Reread on every attempt,
 so it can be replaced in place. Never printed.</li>
 </ul>
+<h3 id="journal">Journal</h3>
+<p><code>supervise --log-dir DIR</code> keeps a bounded journal: <code>current.jsonl</code> (rotated at
+1 MiB) and up to four archives <code>archive.0.jsonl</code> (newest) to
+<code>archive.3.jsonl</code>. Each line is one JSON record
+<code>{sequence, boot_id, time, unit, stream, data, event}</code>: <code>stream</code> is <code>stdout</code>,
+<code>stderr</code> or <code>event</code>; <code>data</code> is the output chunk (at most 8 KiB) base64
+encoded by JSON, so binary output and terminal escapes stay inert; <code>event</code> is
+a lifecycle event object. <code>sequence</code> grows across restarts. Records queue in
+memory (256) and are written by a background goroutine that syncs every
+second and on close; a full queue drops records and counts them in the
+<code>journal</code> field of <code>ctl diagnostics</code> (<code>{&quot;dropped&quot;,&quot;error&quot;}</code>). An unsynced
+tail can be lost on power failure; opening repairs a torn final record. It is
+bounded operational logging, not an audit log. <code>lock</code> makes one writer per
+directory; <code>view.lock</code> lets readers and rotation exclude each other.</p>
+<h3 id="deployment-root">Deployment root</h3>
+<p>See <a href="https://github.com/afterdarksys/sash-init/blob/feat/host-ops/docs/deployments.md">deployments</a>. <code>generations/ID/</code> holds a verified copy
+of one bundle (<code>manifest.json</code>, <code>policy.json</code>, <code>units/</code>, <code>artifacts/</code>) and is
+never changed after it is renamed into place; <code>ID</code> is
+<code>SEQUENCE-</code> and the first 16 hex digits of the manifest digest. <code>state.json</code>
+is <code>{&quot;active&quot;,&quot;pending&quot;,&quot;previous&quot;}</code>. <code>policy/</code> is a boot-policy store
+(<code>policy.json</code>, <code>floor.json</code>) holding the newest staged policy and the
+revocation floor: install a floor there with
+<code>sahinit policy floor-install --trust FILE --document FLOOR --cache ROOT/policy</code>. Nothing is pruned.</p>
 <h3 id="pid-1-files">PID 1 files</h3>
 <p>PID 1 makes the mount propagation of <code>/</code> private, mounts <code>/proc</code>, <code>/sys</code>,
-<code>/dev</code> (devtmpfs, <code>mode=0755</code>), <code>/run</code> (tmpfs, <code>mode=0755</code>) and
+<code>/dev</code> (devtmpfs, <code>mode=0755</code>), <code>/dev/pts</code> (devpts, <code>nosuid,noexec,gid=5,mode=620,ptmxmode=666</code>; group 5 is
+the conventional <code>tty</code> group), <code>/dev/shm</code> (tmpfs, <code>nosuid,nodev,noexec,mode=1777</code>), <code>/run</code> (tmpfs, <code>mode=0755</code>) and
 <code>/sys/fs/cgroup</code> (cgroup2) unless already mounted, creates <code>/run/sahinit</code>
-(0700) and <code>/sys/fs/cgroup/sahinit/supervisor</code>, requires
+(0700), a sticky <code>/tmp</code> when missing, and <code>/sys/fs/cgroup/sahinit/supervisor</code>, requires
 <code>/sys/fs/cgroup/sahinit/cgroup.kill</code>, writes <code>+cpu</code>, <code>+memory</code>, <code>+pids</code> to
 <code>/sys/fs/cgroup/cgroup.subtree_control</code> where available, and opens
 <code>/dev/console</code> for standard input, output and error. At shutdown it reads
-<code>/proc/self/mountinfo</code> and unmounts every non-pseudo mount, deepest first.</p>
+<code>/proc/self/mountinfo</code> and unmounts every non-pseudo mount, deepest first,
+after <code>swapoff</code> of every swap area listed in <code>/proc/swaps</code>. It does no
+filesystem check and no <code>switch_root</code>; <code>contrib/initramfs/init</code> (see
+<a href="/docs/sahinit.html#persistent-ext4-root">operations</a>) does both before it execs
+sahinit on the new root.</p>
 <h2 id="refusal-and-diagnostic-codes">Refusal and diagnostic codes</h2>
 <p>sahinit reports every failure as one stable token from a closed vocabulary
 (<code>internal/fail</code>): error text is the token and nothing else, so a path, a
@@ -1054,6 +1491,11 @@ missing from this page.</p>
 <td>The last start or run failed; see <code>last_error</code>.</td>
 </tr>
 <tr>
+<td><code>blocked</code></td>
+<td>state, event</td>
+<td>Desired, but a <code>needs</code> provider is not ready (<code>last_error</code> <code>needs_not_ready</code>) or failed (<code>needs_failed</code>). The supervisor starts it when the provider is ready again. <code>ctl stop</code> makes it <code>stopped</code>.</td>
+</tr>
+<tr>
 <td><code>started</code></td>
 <td>event</td>
 <td>The process was launched.</td>
@@ -1071,7 +1513,9 @@ missing from this page.</p>
 </tbody>
 </table></div>
 <p>The other event kinds are <code>launch_failed</code>, <code>timeout</code>, <code>restart_limit</code>,
-<code>cgroup_stuck</code> and, for sash units, <code>sash_start</code>, <code>sash_run</code>, <code>sash_stop</code>,
+<code>cgroup_stuck</code>, <code>watchdog</code> (a notify unit missed its watchdog and was
+killed), <code>admission_denied</code> (a deployment's policy refused a start; <code>code</code>
+holds the policy token) and, for sash units, <code>sash_start</code>, <code>sash_run</code>, <code>sash_stop</code>,
 <code>sash_reload</code> and <code>sash_check</code> (the entry's exit code in <code>exit</code>, the token in
 <code>code</code>).</p>
 <h3 id="unit-catalog-load">Unit catalog (load)</h3>
@@ -1190,6 +1634,21 @@ missing from this page.</p>
 <td></td>
 </tr>
 <tr>
+<td><code>essential_requires_boot</code></td>
+<td><code>&quot;essential&quot;: true</code> on a unit with <code>&quot;boot&quot;: false</code>.</td>
+<td>Remove it; only boot units are essential.</td>
+</tr>
+<tr>
+<td><code>restart_delay_invalid</code></td>
+<td><code>restart_delay</code> or <code>restart_max_delay</code> is not a duration string from <code>10ms</code> to <code>5m</code>, or the maximum is below the delay.</td>
+<td>See <a href="/docs/sahinit-units.html#types-readiness-and-restart">restart</a>.</td>
+</tr>
+<tr>
+<td><code>watchdog_invalid</code></td>
+<td><code>watchdog</code> is not a duration string from <code>100ms</code> to <code>5m</code>, or the unit's <code>ready</code> is not <code>notify</code>.</td>
+<td></td>
+</tr>
+<tr>
 <td><code>sandbox_cap</code></td>
 <td>An unknown capability name, or the helper could not keep a listed capability (always the case today for a non-root unit).</td>
 <td>Leave <code>caps</code> empty.</td>
@@ -1283,6 +1742,21 @@ missing from this page.</p>
 <td>Event kind: a launch failed; its <code>code</code> holds the reason.</td>
 <td>Read the event's code.</td>
 </tr>
+<tr>
+<td><code>artifact_digest</code></td>
+<td>A deployment unit's executable does not hash to its signed <code>sha256</code> at launch (it is hashed on every start), or a bundle or generation file does not match the manifest.</td>
+<td>The generation was changed on disk: stage a fresh one from a trusted bundle.</td>
+</tr>
+<tr>
+<td><code>verified_exec_unavailable</code></td>
+<td>A deployment unit's executable could not be opened for reading (only an <code>O_PATH</code> descriptor), or the platform is not Linux, so it cannot be hashed; the launch is refused.</td>
+<td>Run deployments on Linux, as root.</td>
+</tr>
+<tr>
+<td><code>watchdog</code></td>
+<td><code>last_error</code> and event kind: a notify unit with <code>watchdog</code> closed its notify pipe or sent no byte within the interval, and its process group was killed. The restart policy then applies.</td>
+<td>Read its diagnostics; with <code>notify-adapter</code>, match <code>--watchdog</code> to the unit.</td>
+</tr>
 </tbody>
 </table></div>
 <h3 id="lifecycle-and-control">Lifecycle and control</h3>
@@ -1344,6 +1818,284 @@ missing from this page.</p>
 <td><code>frame_size</code></td>
 <td>A control frame is empty or over 64 KiB.</td>
 <td></td>
+</tr>
+<tr>
+<td><code>root_required</code></td>
+<td><code>diff</code>, <code>apply</code>, <code>rollback</code> or <code>activate</code> from a peer whose effective uid is not 0.</td>
+<td>Run <code>ctl</code> as root.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="live-catalog-changes-ctl-diff-apply-rollback-validate">Live catalog changes (<code>ctl diff</code>, <code>apply</code>, <code>rollback</code>, <code>validate</code>)</h3>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Code</th>
+<th scope="col">Meaning</th>
+<th scope="col">What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>catalog_path</code></td>
+<td>The <code>--dir</code> sent with <code>diff</code> or <code>apply</code> is not absolute.</td>
+<td>Pass an absolute directory.</td>
+</tr>
+<tr>
+<td><code>catalog_refused</code></td>
+<td>A unit file in the candidate catalog was refused (<code>validate</code> lists them in <code>refused</code>).</td>
+<td>Fix each refused file.</td>
+</tr>
+<tr>
+<td><code>catalog_sash</code></td>
+<td>The running or the candidate catalog has a sash unit: live changes replace runtimes, and a sash unit's described script, grant and mounts are not carried across.</td>
+<td>Change such a catalog by restarting the supervisor.</td>
+</tr>
+<tr>
+<td><code>apply_rolled_back</code></td>
+<td>A unit of the new catalog failed to stop or start, and the old catalog and desired states were restored. <code>rolled_back</code> is true in the diff.</td>
+<td>Read the failing unit's diagnostics; fix and apply again.</td>
+</tr>
+<tr>
+<td><code>rollback_failed</code></td>
+<td>Restoring the old catalog after a failed apply or activation also failed. The running state is the mix the response's diff describes.</td>
+<td>Inspect <code>ctl status</code>; restart the supervisor if needed.</td>
+</tr>
+<tr>
+<td><code>no_previous_catalog</code></td>
+<td><code>rollback</code> with no earlier <code>apply</code>.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>shutting_down</code></td>
+<td>A catalog change while the supervisor is stopping.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>signed_activation_required</code></td>
+<td><code>apply</code> while running a deployment: unsigned catalogs are refused.</td>
+<td>Stage a generation and <code>ctl activate</code>.</td>
+</tr>
+<tr>
+<td><code>new_policy_required</code></td>
+<td><code>rollback</code> while running a deployment.</td>
+<td>Restore earlier content with a newly signed, higher-sequence generation.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="codes-journal">Journal</h3>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Code</th>
+<th scope="col">Meaning</th>
+<th scope="col">What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>journal_unavailable</code></td>
+<td>Log <code>journal_unavailable TOKEN</code>: <code>--log-dir</code> could not be opened; the supervisor runs without a journal (output stays in the in-memory tails). TOKEN is one of the codes below or <code>failed</code> (for example a read-only file system).</td>
+<td>Fix the directory, then restart the supervisor.</td>
+</tr>
+<tr>
+<td><code>journal_path</code></td>
+<td><code>--log-dir</code> is not absolute.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>journal_limits</code></td>
+<td>Internal size limits out of range.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>journal_perm</code></td>
+<td>The directory or a journal file fails the trusted walk, has group or other access, is not a regular file with one link, or is owned by someone other than root or the supervisor's uid.</td>
+<td><code>install -d -m 700 -o root /var/log/sahinit</code>.</td>
+</tr>
+<tr>
+<td><code>journal_busy</code></td>
+<td>Another supervisor holds the journal's lock.</td>
+<td>One supervisor per journal.</td>
+</tr>
+<tr>
+<td><code>journal_torn_record</code></td>
+<td>The current file ends in a record larger than the limit without a newline; it is not repaired automatically.</td>
+<td>Move the file aside.</td>
+</tr>
+<tr>
+<td><code>journal_size</code></td>
+<td>A journal file is over 64 MiB.</td>
+<td>Move the file aside.</td>
+</tr>
+<tr>
+<td><code>journal_read</code></td>
+<td><code>logs</code> or <code>events</code> could not read the journal.</td>
+<td>Check the directory, the owner and that you run as it.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="deployments-deploy-ctl-activate-supervise---deployment-root">Deployments (<code>deploy</code>, <code>ctl activate</code>, <code>supervise --deployment-root</code>)</h3>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Code</th>
+<th scope="col">Meaning</th>
+<th scope="col">What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>deployment_path</code></td>
+<td><code>--root</code> is not absolute and clean.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>deployment_perm</code></td>
+<td>The root, a pointer or a generation file fails the trusted walk, has the wrong owner, or the root has group or other access.</td>
+<td><code>chmod 700</code>, owner root.</td>
+</tr>
+<tr>
+<td><code>deployment_busy</code></td>
+<td>Another <code>deploy</code> or activation holds the deployment lock.</td>
+<td>Retry.</td>
+</tr>
+<tr>
+<td><code>deployment_size</code></td>
+<td>A unit file over 64 KiB, an artifact over 64 MiB, or a bundle over 256 MiB.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>deployment_state</code></td>
+<td><code>state.json</code> names an invalid generation.</td>
+<td>Repair the pointer file from <code>deploy status</code> of a good copy.</td>
+</tr>
+<tr>
+<td><code>deployment_durability</code></td>
+<td>The active pointer was renamed but its directory could not be synced: the candidate runs and is active, but may not survive a crash.</td>
+<td>Check the storage before the next change.</td>
+</tr>
+<tr>
+<td><code>deployment_jobs</code></td>
+<td>The policy has <code>jobs</code> or <code>offline_jobs</code>, or the manifest has <code>jobs</code> or <code>resources</code>. Boot jobs are not supported.</td>
+<td>Remove them; run setup as oneshot units.</td>
+</tr>
+<tr>
+<td><code>deployment_sash</code></td>
+<td>A deployment unit is a sash unit. Deployments carry exec units only.</td>
+<td>Deploy sash units through <code>--dir</code>.</td>
+</tr>
+<tr>
+<td><code>deployment_no_pending</code></td>
+<td><code>ctl activate</code> with no pending generation.</td>
+<td><code>deploy stage</code> first.</td>
+</tr>
+<tr>
+<td><code>deployment_not_configured</code></td>
+<td><code>ctl activate</code> on a supervisor without <code>--deployment-root</code>.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>boot_in_progress</code></td>
+<td><code>ctl apply</code>, <code>rollback</code> or <code>activate</code> before the boot waves ended, after a strict boot failed, or while the supervisor stops.</td>
+<td>Wait for boot.</td>
+</tr>
+<tr>
+<td><code>bootstrap_refused</code></td>
+<td><code>deploy bootstrap</code> with an active generation already, or no pending one.</td>
+<td>Use <code>ctl activate</code> for later changes.</td>
+</tr>
+<tr>
+<td><code>manifest_read</code></td>
+<td>The manifest file could not be read (missing, wrong owner or mode, over 256 KiB).</td>
+<td></td>
+</tr>
+<tr>
+<td><code>manifest_shape</code></td>
+<td>Wrong <code>version</code>, missing arrays, no units, over 256 units or artifacts, or nesting too deep.</td>
+<td>See <a href="https://github.com/afterdarksys/sash-init/blob/feat/host-ops/docs/deployments.md#bundle-format">the bundle format</a>.</td>
+</tr>
+<tr>
+<td><code>manifest_path</code></td>
+<td>A manifest path is absolute, unclean, escapes the bundle, repeats, or its digest is not 64 lowercase hex digits.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>manifest_unit</code></td>
+<td>A unit path is not <code>units/NAME.json</code> with a valid name.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>manifest_artifact</code></td>
+<td>An artifact path is not under <code>artifacts/</code>.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>manifest_exec</code></td>
+<td>A unit's <code>exec[0]</code> is not <code>@/artifacts/...</code> naming a manifest artifact.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>catalog_digest</code></td>
+<td>The manifest's bytes do not hash to the policy's <code>catalog_sha256</code>.</td>
+<td>Sign the manifest you ship, byte for byte.</td>
+</tr>
+<tr>
+<td><code>catalog_units</code></td>
+<td>The policy's unit list and the manifest's units differ in number.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>catalog_dependencies</code></td>
+<td>A policy unit is missing from the manifest, or its <code>needs</code> differ from the unit file's.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>generation_conflict</code></td>
+<td>A generation with this ID exists with a different policy, or an ID does not match its content.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>generation_invalid</code></td>
+<td>A pointer names a malformed generation ID.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>pending_changed</code></td>
+<td>The pending pointer changed during activation.</td>
+<td>Retry <code>ctl activate</code>.</td>
+</tr>
+<tr>
+<td><code>activation_commit</code></td>
+<td>The new generation ran but the active pointer could not be written; the old catalog was restored.</td>
+<td>Check the storage, then activate again.</td>
+</tr>
+<tr>
+<td><code>policy_unit_denied</code></td>
+<td>The policy does not admit this start now: the unit is not in it, or the policy is in grace and the unit is not in <code>offline_units</code>, or it is expired and this is not an automatic restart of a <code>runtime_restart_units</code> unit.</td>
+<td>Renew the policy (stage and activate a newer one).</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="host-helpers-sahinit-host">Host helpers (<code>sahinit host</code>)</h3>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Code</th>
+<th scope="col">Meaning</th>
+<th scope="col">What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>device_timeout</code></td>
+<td><code>device-wait</code> timed out before the device node appeared.</td>
+<td>Check the driver or raise <code>--timeout</code>.</td>
+</tr>
+<tr>
+<td><code>notify_pipe_missing</code></td>
+<td><code>notify-adapter</code> was not given the notify pipe as fd 3: the unit is not <code>&quot;ready&quot;: &quot;notify&quot;</code>.</td>
+<td>Set <code>&quot;ready&quot;: &quot;notify&quot;</code>.</td>
 </tr>
 </tbody>
 </table></div>
@@ -1463,8 +2215,8 @@ missing from this page.</p>
 </tr>
 <tr>
 <td><code>boot_service_failed</code></td>
-<td>Log <code>boot_service_failed NAME</code>: in strict boot a boot unit became <code>failed</code> (a non-zero exit, a signal, a failed start, <code>restart_limit</code>); a long-running unit that exits 0 is <code>stopped</code> and not caught. The supervisor stops and PID 1 enters recovery.</td>
-<td>Read <code>NAME</code>'s diagnostics in recovery; fix and send SIGHUP to PID 1.</td>
+<td>Log <code>boot_service_failed NAME</code>: in strict boot an essential unit (every boot unit not marked <code>&quot;essential&quot;: false</code>) was not ready when the boot waves ended, or later became <code>failed</code> (a non-zero exit, a signal, a failed start, <code>restart_limit</code>, <code>watchdog</code>) or <code>stopped</code> on its own, or waits on a <code>needs</code> provider that did. The supervisor stops and PID 1 enters recovery.</td>
+<td>Read <code>NAME</code>'s diagnostics in recovery; fix (or mark the unit <code>&quot;essential&quot;: false</code>) and send SIGHUP to PID 1.</td>
 </tr>
 </tbody>
 </table></div>
@@ -1555,7 +2307,7 @@ missing from this page.</p>
 </tr>
 <tr>
 <td><code>sash_lifecycle_limit</code></td>
-<td>A ready or stop timeout or restart delay over 5 minutes, or a restart burst over 5.</td>
+<td>A ready or stop timeout or restart delay over 5 minutes, a restart burst over 5, or a restart window shorter than the restart delay.</td>
 <td>Lower it in the script.</td>
 </tr>
 </tbody>
@@ -2004,7 +2756,7 @@ missing from this page.</p>
 </tbody>
 </table></div>
 
-<p class="source-note">Built from the sash-init repository's reference documentation (docs/reference), which is derived from the source at commit f4eda4c on branch <a href="https://github.com/afterdarksys/sash-init/tree/fix/flaky-tests">fix/flaky-tests</a>. That branch is the reviewed chain of hardening, policy lifetime and renewal, cgroups, PID 1 host init and sash services; it is not yet merged into main.</p>
+<p class="source-note">Built from the sash-init repository's reference documentation (docs/reference) at commit 9dce56e on branch <a href="https://github.com/afterdarksys/sash-init/tree/feat/host-ops">feat/host-ops</a>. That branch is the reviewed chain, licensed GPL-3.0-or-later; it is not yet merged into main.</p>
 
 </article></div></div></main>
 <footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

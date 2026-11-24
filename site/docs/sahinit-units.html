@@ -3,7 +3,7 @@
 <body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
 <main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Host init guides</p><h1>sahinit units and environment.</h1><p>Every unit field, its type, default and validation rule, the refusal code it produces, and the environment and file descriptors each child receives.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Suite utilities</strong><a href="/docs/sah-suite.html">What exists and what for</a><strong>Host init guides</strong><a href="/docs/sahinit.html">sahinit</a><a href="/docs/sahinit-units.html" aria-current="page">sahinit units</a><a href="/docs/sahinit-reference.html">sahinit reference</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a><strong>Accessible tooling</strong><a href="/accessible-tooling.html">Overview</a><a href="/docs/missing-utils.html">Missing Utils</a><a href="/docs/rcdo.html">rcdo</a><a href="/docs/prtool.html">prtool</a><strong>File transfer</strong><a href="/transfer/index.html">Protocols, APIs & compatibility</a></aside><article class="docs-content">
 
-<span class="pill">Early development</span> <span class="pill">PID 1 experimental</span> <span class="pill">No tags or releases</span>
+<span class="pill">Early development</span> <span class="pill">PID 1 experimental</span> <span class="pill">No packaged releases</span> <span class="pill">GPL-3.0-or-later</span>
 <p><strong>This guide:</strong> <a href="/docs/sahinit.html">sahinit guide</a> · <a href="/docs/sahinit-units.html" aria-current="page">Unit reference</a> · <a href="/docs/sahinit-reference.html">Commands, files & codes</a></p>
 <nav aria-label="On this page"><ul>
 <li><a href="#unit-reference">Unit reference</a><ul>
@@ -152,6 +152,34 @@ field is <code>failed</code>.
 <td>Whether boot starts it.</td>
 </tr>
 <tr>
+<td><code>essential</code></td>
+<td>bool</td>
+<td>no</td>
+<td>the value of <code>boot</code></td>
+<td>Only meaningful with <code>supervise --boot-strict</code> (PID 1): an essential unit's failure sends the host to recovery. <code>true</code> needs <code>&quot;boot&quot;: true</code> (<code>essential_requires_boot</code>). Set <code>false</code> to let a boot unit fail alone. See <a href="/docs/sahinit-reference.html#sahinit-supervise">strict boot</a>.</td>
+</tr>
+<tr>
+<td><code>restart_delay</code></td>
+<td>string</td>
+<td>no</td>
+<td><code>100ms</code></td>
+<td>A Go duration from <code>10ms</code> to <code>5m</code> (<code>restart_delay_invalid</code>): the first automatic restart's delay.</td>
+</tr>
+<tr>
+<td><code>restart_max_delay</code></td>
+<td>string</td>
+<td>no</td>
+<td><code>30s</code></td>
+<td>From <code>10ms</code> to <code>5m</code>, not below <code>restart_delay</code> (<code>restart_delay_invalid</code>): the cap of the growing delay.</td>
+</tr>
+<tr>
+<td><code>watchdog</code></td>
+<td>string</td>
+<td>no</td>
+<td>none</td>
+<td>From <code>100ms</code> to <code>5m</code>; needs <code>&quot;ready&quot;: &quot;notify&quot;</code> (<code>watchdog_invalid</code>). See <a href="#watchdog">watchdog</a>.</td>
+</tr>
+<tr>
 <td><code>execution</code></td>
 <td>object</td>
 <td>no</td>
@@ -255,14 +283,31 @@ fields: stop is always SIGTERM to the process group, then SIGKILL (see
 <li>A oneshot that exits non-zero is <code>failed</code>.</li>
 <li><code>restart</code> applies to a <code>simple</code> unit whose process exits after it was
 ready (or at any time with <code>ready: exec</code>): <code>always</code> restarts after any exit,
-<code>on-failure</code> after a non-zero exit or a signal. There is no delay between
-restarts. At most 5 restarts in any 30 s; the next exit is then <code>failed</code>
-with <code>restart_limit</code>. A manual start resets the count.</li>
+<code>on-failure</code> after a non-zero exit or a signal. The n-th consecutive
+crash waits <code>restart_delay</code> × 2^(n−1), capped at <code>restart_max_delay</code>,
+scaled by a random 80–100 % (so never above the cap); during the wait the
+state is <code>starting</code>. Two limits end a crash loop with <code>failed</code> and
+<code>restart_limit</code>: more than 5 restarts in any 30 s, and more than 5
+consecutive crashes, counting every exit until a run has stayed ready for
+the stable period (10 s, or <code>timeout</code> when longer), however long the
+delays. A run that stayed ready that long resets the crash count; a manual
+start resets both. A unit whose <code>needs</code> provider is not ready when the
+delay ends becomes <code>blocked</code>. In strict boot, an essential unit that has
+crashed and is still waiting out its delay when the boot waves end counts
+as not ready, so the boot fails then rather than waiting.</li>
 <li>A stop is never followed by a restart.</li>
 </ul>
+<h4 id="watchdog">Watchdog</h4>
+<p>A <code>&quot;ready&quot;: &quot;notify&quot;</code> unit with <code>watchdog</code> keeps its notify pipe (fd 3) open
+after the readiness byte and must write another byte within every interval.
+End of file on the pipe or a missed interval kills the process group; the
+unit's <code>last_error</code> and event are <code>watchdog</code>, and its restart policy applies.
+For a program that speaks sd_notify, run it through
+<a href="/docs/sahinit-reference.html#sahinit-host"><code>sahinit host notify-adapter</code></a> with the same interval.
+This is a service watchdog, not a hardware (<code>/dev/watchdog</code>) one.</p>
 <h4 id="lifecycle">Lifecycle</h4>
 <p>States: <code>stopped</code>, <code>starting</code>, <code>running</code>, <code>stopping</code>, <code>exited</code> (a finished
-oneshot), <code>failed</code>. Stop sends SIGTERM to the process group, waits up to
+oneshot), <code>failed</code>, <code>blocked</code> (desired, waiting for a <code>needs</code> provider). Stop sends SIGTERM to the process group, waits up to
 <code>timeout</code>, then SIGKILLs. With cgroups, whenever the main process exits for any
 reason everything left in the service's cgroup is killed, and the service has
 ended only when the cgroup is empty; otherwise it fails with <code>cgroup_stuck</code>.
@@ -275,15 +320,18 @@ answers <code>arg_required</code>. Arguments are never logged.</p>
 <ul>
 <li><code>needs</code>: the unit starts only when each named unit is running and ready, or
 has exited successfully (a oneshot). A failed one makes the start fail with
-<code>needs_failed</code> (the unit is marked failed); one not yet ready is
-<code>needs_not_ready</code>.</li>
+<code>needs_failed</code>, one not yet ready with <code>needs_not_ready</code>; either way the
+unit becomes <code>blocked</code>. The supervisor checks every 200 ms: a running unit
+whose provider is no longer ready is stopped and <code>blocked</code> (dependents
+first), and a <code>blocked</code> unit starts once its providers are ready (providers
+first). A unit an operator stopped is not desired and is left alone.</li>
 <li><code>after</code>: ordering only; no requirement.</li>
 <li><code>wants</code>: ordering when the named unit exists; ignored when it does not.</li>
 <li>The whole catalog, including non-boot units, must be acyclic (<code>cycle</code>).</li>
 <li>A boot unit may not <code>needs</code> a non-boot unit (<code>boot_needs</code>).</li>
 <li>Boot runs waves in order; units in one wave start in parallel. A failed
-unit does not stop later waves (except in strict host boot, where any boot
-failure enters recovery).</li>
+unit does not stop later waves. In strict host boot an essential unit's
+failure then enters recovery (see <code>essential</code>).</li>
 <li>Shutdown stops every unit, including ones started by hand, in reverse wave
 order; units in one wave stop in parallel.</li>
 </ul>
@@ -466,7 +514,7 @@ not supported.</p>
 readiness, stop and restart come from <code>sash --describe</code>, and every privileged
 action the script asks for is checked against its signed grant. See
 <a href="/docs/sahinit.html#sash-services">operations</a> for set-up and
-<a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/design/sash-services-1.md">the sash design</a> for the protocol.</p>
+<a href="https://github.com/afterdarksys/sash-init/blob/feat/host-ops/docs/design/sash-services-1.md">the sash design</a> for the protocol.</p>
 <div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>{
   &quot;name&quot;: &quot;app&quot;,
   &quot;sash&quot;: { &quot;file&quot;: &quot;/etc/sahinit/services/app.sash&quot;, &quot;grant&quot;: &quot;/etc/sahinit/grants/app.grant&quot; },
@@ -539,7 +587,7 @@ action the script asks for is checked against its signed grant. See
 <td>bool</td>
 <td>no</td>
 <td><code>true</code></td>
-<td></td>
+<td>A sash boot unit is always essential in strict boot; it has no <code>essential</code> field.</td>
 </tr>
 <tr>
 <td><code>memory_max</code>, <code>cpu_max</code>, <code>pids_max</code></td>
@@ -551,10 +599,14 @@ action the script asks for is checked against its signed grant. See
 </tbody>
 </table></div>
 <p>Refused on a sash unit (<code>sash_unit_field</code>): <code>exec</code>, <code>type</code>, <code>ready</code>,
-<code>timeout</code>, <code>execution.groups</code>, <code>execution.directory</code>,
+<code>timeout</code>, <code>essential</code>, <code>restart_delay</code>, <code>restart_max_delay</code>, <code>watchdog</code>,
+<code>execution.groups</code>, <code>execution.directory</code>,
 <code>execution.environment</code>.</p>
 <p><code>sash --describe</code> limits: a ready or stop timeout or a restart delay above 5
-minutes, or a restart burst above 5, is <code>sash_lifecycle_limit</code>. Ordering names
+minutes, a restart burst above 5, or a restart window (<code>within</code>) shorter
+than the restart delay, is <code>sash_lifecycle_limit</code>. A sash unit's restarts
+also stop at <code>restart_limit</code> after its burst of consecutive crashes without
+a run that stayed ready for the stable period, as for exec units. Ordering names
 must be valid unit names (<code>sash_order_mismatch</code>). A non-zero exit, malformed
 output or no <code>start</code>/<code>run</code> entry is <code>sash_describe</code>. <code>sahinit plan</code> does not
 run describe; it checks only the unit file and the file permissions.</p>
@@ -586,6 +638,10 @@ run describe; it checks only the unit file and the file permissions.</p>
 <tr>
 <td><code>type_invalid</code>, <code>ready_invalid</code>, <code>restart_invalid</code>, <code>timeout_range</code></td>
 <td>the fields above</td>
+</tr>
+<tr>
+<td><code>essential_requires_boot</code>, <code>restart_delay_invalid</code>, <code>watchdog_invalid</code></td>
+<td><code>essential</code>, the restart delays, <code>watchdog</code></td>
 </tr>
 <tr>
 <td><code>edge_empty</code></td>
@@ -643,13 +699,19 @@ derived from <code>internal/unit/execution.go</code>, <code>internal/sandbox</co
 <td><code>/usr/bin:/bin:/usr/sbin:/sbin</code> unless the unit's (or the spawn's) environment sets <code>PATH</code>, which then replaces it.</td>
 </tr>
 <tr>
+<td><code>NOTIFY_SOCKET</code>, <code>WATCHDOG_USEC</code></td>
+<td>the child of <code>sahinit host notify-adapter</code> only</td>
+<td>A private datagram socket path, and the <code>--watchdog</code> interval in microseconds when it is set. The adapter removes any inherited <code>SAHINIT_*</code>, <code>NOTIFY_SOCKET</code> and <code>WATCHDOG_*</code> first.</td>
+</tr>
+<tr>
 <td><code>PATH</code>, <code>HOME</code>, <code>TERM</code></td>
 <td>the supervisor and the recovery program started by PID 1</td>
 <td>exactly <code>PATH=/usr/sbin:/usr/bin:/sbin:/bin</code>, <code>HOME=/root</code>, <code>TERM=linux</code>, and nothing else.</td>
 </tr>
 </tbody>
 </table></div>
-<p>No other variable is added. In particular sahinit does not set <code>NOTIFY_SOCKET</code>,
+<p>No other variable is added. In particular the supervisor does not set <code>NOTIFY_SOCKET</code>
+(only <code>notify-adapter</code> does, for its own child),
 <code>LISTEN_FDS</code>, <code>INVOCATION_ID</code>, <code>HOME</code>, <code>USER</code>, <code>LOGNAME</code> or <code>SHELL</code> for
 services: set what a program needs in <code>execution.environment</code>.</p>
 <h3 id="clean-environment-rules">Clean environment rules</h3>
@@ -757,7 +819,7 @@ whatever that init gives it; it does not reach services.</p>
 </tbody>
 </table></div>
 
-<p class="source-note">Built from the sash-init repository's reference documentation (docs/reference), which is derived from the source at commit f4eda4c on branch <a href="https://github.com/afterdarksys/sash-init/tree/fix/flaky-tests">fix/flaky-tests</a>. That branch is the reviewed chain of hardening, policy lifetime and renewal, cgroups, PID 1 host init and sash services; it is not yet merged into main.</p>
+<p class="source-note">Built from the sash-init repository's reference documentation (docs/reference) at commit 9dce56e on branch <a href="https://github.com/afterdarksys/sash-init/tree/feat/host-ops">feat/host-ops</a>. That branch is the reviewed chain, licensed GPL-3.0-or-later; it is not yet merged into main.</p>
 
 </article></div></div></main>
 <footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>
