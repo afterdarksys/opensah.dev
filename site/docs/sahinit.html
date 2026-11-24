@@ -207,8 +207,8 @@ for <code>cgroup.kill</code>; enables <code>cpu</code>, <code>memory</code> and 
 <code>sahinit supervise --boot-strict ...</code> in <code>/sys/fs/cgroup/sahinit/supervisor</code>
 with only <code>PATH</code>, <code>HOME=/root</code> and <code>TERM=linux</code>; then reaps every orphan.</p>
 <p>In strict boot <strong>every boot unit is essential</strong>: any refused unit file or
-limit, a graph error, a failed boot unit or an unexpectedly exited
-long-running boot unit stops the supervisor, and PID 1 enters recovery. A
+limit, a graph error, a failed boot wave, or a boot unit that later becomes
+<code>failed</code> (a non-zero exit, a signal, <code>restart_limit</code>) stops the supervisor, and PID 1 enters recovery. A
 oneshot that exited 0 and a unit stopped with <code>ctl stop</code> are fine. Test a
 catalog with plain <code>supervise</code> (without <code>--boot-strict</code>) before booting it.</p>
 <h4 id="power-and-signals">Power and signals</h4>
@@ -354,7 +354,7 @@ fails verification, which also blocks normal replacement. Rotate with overlap:</
 <ol>
 <li>Add the new key to <code>keys</code> in the trust file, keeping the old one.</li>
 <li>Install a policy signed with the new key at a higher <code>sequence</code>
-(<code>policy cache</code>).</li>
+(<code>policy cache</code>; a <code>renew</code> policy also needs <code>--trust-system-clock</code>).</li>
 <li>If a floor is installed, install a floor signed with the new key and a
 <strong>higher</strong> <code>min_sequence</code> (at most the new policy's sequence). Re-signing
 the same payload is treated as the same floor and keeps the old file.</li>
@@ -396,7 +396,8 @@ exits, so it is always available). Repair the catalog from recovery, then send S
 starts the supervisor again.</p>
 <ul>
 <li>If the <strong>init flags</strong> are invalid, PID 1 logs
-<code>sahinit-init: recovery: setup: invalid init configuration</code> and falls back to
+<code>sahinit-init: recovery: setup: ERROR</code> (<code>invalid init configuration</code>, or Go's
+flag error for an unknown flag) and falls back to
 the defaults <strong>without</strong> a recovery program. SIGHUP cannot fix this, because
 the flags do not change. Reboot with corrected kernel arguments, or with
 another init.</li>
@@ -559,7 +560,7 @@ replace the binary, the catalog or the state directories.</li>
 <ul>
 <li><code>exec[0]</code>, <code>#!</code> interpreters, the sash binary and sash scripts are resolved
 once with the trusted walk (every directory from <code>/</code> owned by root or the
-supervisor's uid, not writable by others, sticky directories excepted), so
+supervisor's uid, not writable by others, sticky directories may be writable by others), so
 nobody else can swap a component between the check and the exec.</li>
 <li>On Linux the checked file is executed <strong>through its open file
 descriptor</strong>, so the inode checked is the inode run.</li>

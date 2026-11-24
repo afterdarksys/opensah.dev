@@ -51,8 +51,9 @@ supervisor's uid and not group- or other-writable. A file failing the owner
 and mode rule is <strong>left out</strong> and reported as <code>unit_perm FILE</code>; the rest of
 the catalog loads.</li>
 <li>Any other problem in a file (a parse or validation error below) refuses the
-<strong>whole catalog</strong> with that token. Only <code>unit_perm</code>, <code>sash_file_perm</code>,
-<code>sash_grant_perm</code> and the later per-unit checks (<code>cgroup_controller</code> and the
+<strong>whole catalog</strong> with that token. Only <code>unit_perm</code>, the file checks of
+<code>sash_file_perm</code> and <code>sash_grant_perm</code> (a relative <code>sash.file</code> or
+<code>sash.grant</code> is a parse error and refuses the catalog), and the later per-unit checks (<code>cgroup_controller</code> and the
 sash load checks) leave one unit out.</li>
 <li>Two files whose <code>name</code> is the same is <code>duplicate_field</code>. If every file is
 left out, the result is <code>empty</code>.</li>
@@ -63,8 +64,10 @@ decoded strictly:</p>
 <ul>
 <li>one object, nothing after it (<code>failed</code>);</li>
 <li>an unknown key is <code>unknown_field</code>; a repeated key is <code>duplicate_field</code>;</li>
-<li><code>null</code> for any value, a wrong JSON type, or a number that does not fit the
-field is <code>failed</code>.</li>
+<li><code>null</code> for a value, a wrong JSON type, or a number that does not fit the
+field is <code>failed</code>.
+(except <code>restart</code>, <code>timeout</code> and the limits, which report
+<code>restart_invalid</code>, <code>timeout_range</code> and <code>limit_invalid</code>).</li>
 </ul>
 <h3 id="exec-unit-fields">Exec unit fields</h3>
 <div class="table-scroll"><table class="status-table">
@@ -152,7 +155,7 @@ field is <code>failed</code>.</li>
 <td><code>execution</code></td>
 <td>object</td>
 <td>no</td>
-<td>supervisor identity, <code>/</code>, empty environment</td>
+<td>supervisor identity, <code>/</code>, environment with only the default <code>PATH</code></td>
 <td>See <a href="#execution">execution</a>.</td>
 </tr>
 <tr>
@@ -350,7 +353,7 @@ checks and is not itself a script. <code>#!/usr/bin/env ...</code>, <code>#!/bin
 </tr>
 </tbody>
 </table></div>
-<p>Every violation is <code>execution_invalid</code>. IDs are numeric only: there is no
+<p>Every rule violation is <code>execution_invalid</code> (a wrong JSON type or an out-of-range number is <code>failed</code>). IDs are numeric only: there is no
 name-service lookup for exec units. Without <code>uid</code>/<code>gid</code> the service runs as
 the supervisor (root under PID 1). An unprivileged supervisor that cannot set
 the requested credentials fails the start. The environment rules are in

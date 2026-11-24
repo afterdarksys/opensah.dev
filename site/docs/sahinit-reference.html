@@ -172,10 +172,11 @@ Linux, <code>init requires Linux PID 1</code>) and exits 1. As PID 1 it never ex
 </table></div>
 <p>The supervisor is always started as
 <code>sahinit supervise --dir DIR --socket PATH --boot-strict [--sash ...] [--sash-fleet-pub ...] [--sash-floor-dir ...]</code>.</p>
-<p>Errors: a flag that does not parse, an extra argument, or a value outside the
-constraints is the configuration error <code>invalid init configuration</code>. As PID 1
-this is logged as <code>sahinit-init: recovery: setup: invalid init configuration</code>
-and PID 1 enters recovery (it does not exit). Signals to PID 1 are listed in
+<p>Errors: an extra argument, a relative path or a timeout outside the range is
+<code>invalid init configuration</code>; an unknown flag or a value that does not parse
+is Go's flag error text (for example <code>flag provided but not defined: -x</code>). As
+PID 1 either is logged as <code>sahinit-init: recovery: setup: ERROR</code> and PID 1
+enters recovery (it does not exit). Signals to PID 1 are listed in
 <a href="/docs/sahinit.html#power-and-signals">operations</a>.</p>
 <h3 id="sahinit-supervise">sahinit supervise</h3>
 <div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit supervise --dir DIR --socket PATH [--uid UID]... [--gid GID]
@@ -218,7 +219,7 @@ every service in reverse dependency order.</p>
 <td><code>--gid</code></td>
 <td>uint32</td>
 <td>none</td>
-<td>At most once. Required (<code>socket_group</code>) when <code>--uid</code> names a uid other than the supervisor's: the socket is then mode 0660 with this group.</td>
+<td>At most once. Required (<code>socket_group</code>) when <code>--uid</code> names a uid other than the supervisor's: the socket is then mode 0660 with this group. Otherwise it is ignored.</td>
 </tr>
 <tr>
 <td><code>--no-cgroups</code></td>
@@ -236,7 +237,7 @@ every service in reverse dependency order.</p>
 <td><code>--boot-strict</code></td>
 <td>bool</td>
 <td>false</td>
-<td>Host-boot mode, used by <code>init</code>. Any refused unit file, refused limit or refused sash unit refuses the whole start (<code>boot_refused</code>); a failed boot wave, a failed boot unit or an unexpectedly exited long-running boot unit stops the supervisor with exit 1 (<code>boot_service_failed NAME</code>).</td>
+<td>Host-boot mode, used by <code>init</code>. Any refused unit file, refused limit or refused sash unit refuses the whole start (<code>boot_refused</code>); a failed boot wave (its token is printed), or a boot unit that later becomes <code>failed</code> (a non-zero exit, a signal, <code>restart_limit</code>; logged <code>boot_service_failed NAME</code>), stops the supervisor with exit 1. A <code>simple</code> boot unit that exits 0 without restart becomes <code>stopped</code> and is not caught.</td>
 </tr>
 <tr>
 <td><code>--sash</code></td>
@@ -265,7 +266,8 @@ second <code>--gid</code>, a negative <code>--cgroup-sweep</code> or an extra ar
 <li>Load units. A catalog-level refusal (<code>unit_perm</code>, <code>symlink</code>, <code>stray_file</code>,
 <code>too_many</code>, <code>empty</code>, <code>failed</code>, and any parse token such as <code>unknown_field</code>)
 is printed and exits 2. Each refused unit file is printed as <code>TOKEN FILE</code>
-and left out (with <code>--boot-strict</code>: <code>boot_refused</code>, exit 2).</li>
+and left out. With <code>--boot-strict</code> only <code>boot_refused</code> is printed (exit 2);
+run <code>plan</code> to see which file.</li>
 <li>Open cgroups (<code>cgroup_unavailable</code>, <code>cgroup_busy</code>; exit 2), unless
 <code>--no-cgroups</code> or not Linux.</li>
 <li>Refuse units whose limits cannot be applied: <code>cgroup_controller FILE</code>.</li>
@@ -363,7 +365,7 @@ supervisor and prints the JSON response on stdout.</p>
 <tr>
 <td><code>stop</code></td>
 <td>required</td>
-<td>Stop a service. A stopped or exited service stays as it is.</td>
+<td>Stop a service: SIGTERM, then SIGKILL after <code>timeout</code>. A stopped or exited service stays as it is; a failed one with no process becomes <code>stopped</code>.</td>
 </tr>
 <tr>
 <td><code>restart</code></td>
@@ -608,7 +610,7 @@ defaults are real defaults only where marked; the rest are suggestions.</p>
 <li><strong>Trusted walk.</strong> A path is resolved one component at a time from <code>/</code>.
 Every directory it passes through must be owned by root or the supervisor's
 effective uid and not group- or other-writable; a sticky directory (such as
-<code>/tmp</code>) may be writable by others. Symlinks are followed only inside such
+<code>/tmp</code>) may be writable by others, but must still have such an owner. Symlinks are followed only inside such
 directories (at most 40). Implemented by <code>unit.ResolveTrusted</code>.</li>
 <li><strong>Owner and mode rule.</strong> The file itself is owned by root or the effective
 uid and is not group- or other-writable.</li>
@@ -910,7 +912,7 @@ effective uid with no group or other access. Contents:</p>
 <li><code>SERVICE.floor</code>: the signed floor, <code>{&quot;payload&quot;: base64, &quot;signature&quot;: base64}</code>,
 at most 4 KiB. The payload is exactly
 <code>{&quot;version&quot;:&quot;sahinit-sash-floor/1&quot;,&quot;service&quot;:S,&quot;min_serial&quot;:N,&quot;issued_at&quot;:T}</code>,
-<code>min_serial</code> 1 to 2^53-1, signed by the fleet key over
+<code>min_serial</code> 1 to 2^53-1, <code>issued_at</code> above 0, signed by the fleet key over
 <code>sahinit-sash-floor-v1\n</code> + payload. No floor file means no floor.</li>
 <li><code>lock</code>: flock for installs and reads; an install in progress is waited for
 2 s (<code>sash_floor_busy</code>).</li>
@@ -995,7 +997,7 @@ missing from this page.</p>
 </tr>
 <tr>
 <td><code>timeout</code></td>
-<td>A start did not become ready within the unit's <code>timeout</code>, a stop's wait ran out, or a sash <code>wait</code> verb ran out.</td>
+<td>A start did not become ready within the unit's <code>timeout</code>, a sash start's readiness ran out, or a sash <code>wait</code> verb ran out. (A plain stop never times out: it escalates to SIGKILL.)</td>
 <td>Raise <code>timeout</code> (at most <code>5m</code>), or fix the readiness signal (notify writes to fd 3).</td>
 </tr>
 <tr>
@@ -1129,7 +1131,7 @@ missing from this page.</p>
 </tr>
 <tr>
 <td><code>exec_relative</code></td>
-<td><code>exec[0]</code> (or a sash path) is not absolute and clean.</td>
+<td><code>exec[0]</code> is not absolute and clean.</td>
 <td>Use an absolute, clean path.</td>
 </tr>
 <tr>
@@ -1243,7 +1245,7 @@ missing from this page.</p>
 </tr>
 <tr>
 <td><code>exec_perm</code></td>
-<td>The executable or a directory on its path is owned by someone other than root or the supervisor's uid, or writable by group or other (sticky directories excepted).</td>
+<td>The executable or a directory on its path is owned by someone other than root or the supervisor's uid, or writable by group or other (a sticky directory may be writable by others, but still needs that owner).</td>
 <td>Fix ownership and modes along the whole path.</td>
 </tr>
 <tr>
@@ -1461,7 +1463,7 @@ missing from this page.</p>
 </tr>
 <tr>
 <td><code>boot_service_failed</code></td>
-<td>Log <code>boot_service_failed NAME</code>: in strict boot a boot unit failed, or a long-running boot unit exited. The supervisor stops and PID 1 enters recovery.</td>
+<td>Log <code>boot_service_failed NAME</code>: in strict boot a boot unit became <code>failed</code> (a non-zero exit, a signal, a failed start, <code>restart_limit</code>); a long-running unit that exits 0 is <code>stopped</code> and not caught. The supervisor stops and PID 1 enters recovery.</td>
 <td>Read <code>NAME</code>'s diagnostics in recovery; fix and send SIGHUP to PID 1.</td>
 </tr>
 </tbody>
@@ -1559,7 +1561,7 @@ missing from this page.</p>
 </tbody>
 </table></div>
 <h3 id="sash-units-grant-and-floor-before-every-start">sash units: grant and floor (before every start)</h3>
-<p>Every grant failure fails the unit without restart and is logged as
+<p>Every grant failure except <code>sash_floor_busy</code> fails the unit without restart and is logged as
 <code>sash_grant SERVICE TOKEN</code>.</p>
 <div class="table-scroll"><table class="status-table">
 <thead>
@@ -1627,7 +1629,7 @@ missing from this page.</p>
 </tr>
 <tr>
 <td><code>sash_floor_busy</code></td>
-<td>A floor install held the store lock for over 2 s. Transient; the restart policy may retry.</td>
+<td>A floor install held the store lock for over 2 s (every grant check takes that lock, so a concurrent <code>floor-install</code> can cause it). Transient; the restart policy may retry.</td>
 <td>Retry.</td>
 </tr>
 <tr>
