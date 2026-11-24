@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>sahinit unit reference | OpenSAH / dev</title><meta name="description" content="The sahinit unit JSON schema: exec and sash units, execution identity, sandbox, cgroup limits, readiness, restart and dependencies, and the environment children receive."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/sahinit-units.html"><meta property="og:type" content="website"><meta property="og:title" content="sahinit unit reference | OpenSAH / dev"><meta property="og:description" content="The sahinit unit JSON schema: exec and sash units, execution identity, sandbox, cgroup limits, readiness, restart and dependencies, and the environment children receive."><meta property="og:url" content="https://opensah.dev/docs/sahinit-units.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Host init guides</p><h1>sahinit units and environment.</h1><p>Every unit field, its type, default and validation rule, the refusal code it produces, and the environment and file descriptors each child receives.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Suite utilities</strong><a href="/docs/sah-suite.html">What exists and what for</a><strong>Host init guides</strong><a href="/docs/sahinit.html">sahinit</a><a href="/docs/sahinit-units.html" aria-current="page">sahinit units</a><a href="/docs/sahinit-reference.html">sahinit reference</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a><strong>Accessible tooling</strong><a href="/accessible-tooling.html">Overview</a><a href="/docs/missing-utils.html">Missing Utils</a><a href="/docs/rcdo.html">rcdo</a><a href="/docs/prtool.html">prtool</a><strong>File transfer</strong><a href="/transfer/index.html">Protocols, APIs & compatibility</a></aside><article class="docs-content">
+
+<span class="pill">Early development</span> <span class="pill">PID 1 experimental</span> <span class="pill">No tags or releases</span>
+<p><strong>This guide:</strong> <a href="/docs/sahinit.html">sahinit guide</a> · <a href="/docs/sahinit-units.html" aria-current="page">Unit reference</a> · <a href="/docs/sahinit-reference.html">Commands, files & codes</a></p>
+<nav aria-label="On this page"><ul>
+<li><a href="#unit-reference">Unit reference</a><ul>
+<li><a href="#the-unit-directory">The unit directory</a></li>
+<li><a href="#decoding-rules">Decoding rules</a></li>
+<li><a href="#exec-unit-fields">Exec unit fields</a></li>
+<li><a href="#types-readiness-and-restart">Types, readiness and restart</a></li>
+<li><a href="#dependencies">Dependencies</a></li>
+<li><a href="#executables">Executables</a></li>
+<li><a href="#execution">Execution</a></li>
+<li><a href="#sandbox">Sandbox</a></li>
+<li><a href="#limits">Limits</a></li>
+<li><a href="#sash-units">Sash units</a></li>
+<li><a href="#refusal-tokens-by-field">Refusal tokens by field</a></li>
+</ul></li>
+<li><a href="#environment-reference">Environment reference</a><ul>
+<li><a href="#variables-sahinit-sets">Variables sahinit sets</a></li>
+<li><a href="#clean-environment-rules">Clean environment rules</a></li>
+<li><a href="#variables-that-affect-sahinit-itself">Variables that affect sahinit itself</a></li>
+<li><a href="#file-descriptors-for-completeness">File descriptors (for completeness)</a></li>
+</ul></li>
+</ul></nav>
+
+<h2 id="unit-reference">Unit reference</h2>
+<p>A unit is one JSON file in the unit directory. This page is derived from
+<code>internal/unit</code> (<code>unit.go</code>, <code>execution.go</code>, <code>limits.go</code>, <code>sash.go</code>),
+<code>internal/jsonobj</code> and <code>internal/graph</code>. There are two kinds of unit:</p>
+<ul>
+<li>an <strong>exec unit</strong>, which names a program in <code>exec</code>;</li>
+<li>a <strong>sash unit</strong>, which names a sash service script in <code>sash</code> (see
+<a href="#sash-units">sash units</a>).</li>
+</ul>
+<h3 id="the-unit-directory">The unit directory</h3>
+<ul>
+<li>The directory must not be a symlink (<code>symlink</code>), must be a directory
+(<code>failed</code>), and must be owned by root or by the supervisor's effective uid
+and not writable by group or other (<code>unit_perm</code>). Any of these refuses the
+whole catalog.</li>
+<li>Every entry must be a regular <code>NAME.json</code> file. A directory, a dot-file or a
+file without <code>.json</code> refuses the catalog (<code>stray_file</code>); a symlink refuses
+it (<code>symlink</code>). An empty directory is <code>empty</code>. More than 256 entries is
+<code>too_many</code>.</li>
+<li>Each file must be at most 64 KiB (<code>file_size</code>), and owned by root or the
+supervisor's uid and not group- or other-writable. A file failing the owner
+and mode rule is <strong>left out</strong> and reported as <code>unit_perm FILE</code>; the rest of
+the catalog loads.</li>
+<li>Any other problem in a file (a parse or validation error below) refuses the
+<strong>whole catalog</strong> with that token. Only <code>unit_perm</code>, <code>sash_file_perm</code>,
+<code>sash_grant_perm</code> and the later per-unit checks (<code>cgroup_controller</code> and the
+sash load checks) leave one unit out.</li>
+<li>Two files whose <code>name</code> is the same is <code>duplicate_field</code>. If every file is
+left out, the result is <code>empty</code>.</li>
+</ul>
+<h3 id="decoding-rules">Decoding rules</h3>
+<p>Every JSON object in a unit (the unit, <code>execution</code>, <code>sandbox</code>, <code>sash</code>) is
+decoded strictly:</p>
+<ul>
+<li>one object, nothing after it (<code>failed</code>);</li>
+<li>an unknown key is <code>unknown_field</code>; a repeated key is <code>duplicate_field</code>;</li>
+<li><code>null</code> for any value, a wrong JSON type, or a number that does not fit the
+field is <code>failed</code>.</li>
+</ul>
+<h3 id="exec-unit-fields">Exec unit fields</h3>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Field</th>
+<th scope="col">Type</th>
+<th scope="col">Required</th>
+<th scope="col">Default</th>
+<th scope="col">Rules (token on failure)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td><code>^[a-z][a-z0-9-]{0,62}$</code> (<code>name_invalid</code>), and equal to the file name without <code>.json</code> (<code>name_mismatch</code>).</td>
+</tr>
+<tr>
+<td><code>exec</code></td>
+<td>array of strings</td>
+<td>yes</td>
+<td></td>
+<td>1 to 32 entries, each at most 256 bytes, no NUL (<code>failed</code>). <code>exec[0]</code> is absolute and clean (<code>exec_relative</code>). See <a href="#executables">executables</a>.</td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td><code>simple</code> or <code>oneshot</code> (<code>type_invalid</code>).</td>
+</tr>
+<tr>
+<td><code>ready</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td><code>simple</code>: <code>exec</code> or <code>notify</code>. <code>oneshot</code>: <code>exit</code>. Anything else is <code>ready_invalid</code>.</td>
+</tr>
+<tr>
+<td><code>restart</code></td>
+<td>string</td>
+<td>no</td>
+<td><code>no</code></td>
+<td><code>no</code>, <code>on-failure</code> or <code>always</code> (<code>restart_invalid</code>). A oneshot must use <code>no</code> (<code>restart_invalid</code>).</td>
+</tr>
+<tr>
+<td><code>needs</code></td>
+<td>array of strings</td>
+<td>no</td>
+<td>none</td>
+<td>At most 64, unique (<code>duplicate_field</code>), non-empty (<code>edge_empty</code>). Each must name a unit in the catalog (<code>missing_needs</code>). See <a href="#dependencies">dependencies</a>.</td>
+</tr>
+<tr>
+<td><code>after</code></td>
+<td>array of strings</td>
+<td>no</td>
+<td>none</td>
+<td>As <code>needs</code> (<code>missing_after</code> for an absent unit).</td>
+</tr>
+<tr>
+<td><code>wants</code></td>
+<td>array of strings</td>
+<td>no</td>
+<td>none</td>
+<td>As <code>needs</code>, but an absent unit is ignored.</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>string</td>
+<td>no</td>
+<td><code>5s</code></td>
+<td>A Go duration (<code>500ms</code>, <code>30s</code>, <code>2m</code>), more than 0 and at most <code>5m</code> (<code>timeout_range</code>).</td>
+</tr>
+<tr>
+<td><code>boot</code></td>
+<td>bool</td>
+<td>no</td>
+<td><code>true</code> for <code>simple</code>, <code>false</code> for <code>oneshot</code></td>
+<td>Whether boot starts it.</td>
+</tr>
+<tr>
+<td><code>execution</code></td>
+<td>object</td>
+<td>no</td>
+<td>supervisor identity, <code>/</code>, empty environment</td>
+<td>See <a href="#execution">execution</a>.</td>
+</tr>
+<tr>
+<td><code>sandbox</code></td>
+<td>object</td>
+<td>no</td>
+<td>no sandbox</td>
+<td>See <a href="#sandbox">sandbox</a>. Requires a non-root <code>execution.uid</code> (<code>sandbox_root</code>).</td>
+</tr>
+<tr>
+<td><code>memory_max</code></td>
+<td>string</td>
+<td>no</td>
+<td>no limit</td>
+<td>See <a href="#limits">limits</a>.</td>
+</tr>
+<tr>
+<td><code>cpu_max</code></td>
+<td>string</td>
+<td>no</td>
+<td>no limit</td>
+<td>See <a href="#limits">limits</a>.</td>
+</tr>
+<tr>
+<td><code>pids_max</code></td>
+<td>integer</td>
+<td>no</td>
+<td>no limit</td>
+<td>See <a href="#limits">limits</a>.</td>
+</tr>
+</tbody>
+</table></div>
+<p>There are no <code>stop</code>, <code>environment_file</code>, <code>user</code> (by name) or <code>working_directory</code>
+fields: stop is always SIGTERM to the process group, then SIGKILL (see
+<a href="#lifecycle">lifecycle</a>), and identity and directory live in <code>execution</code>.</p>
+<h4 id="minimal-and-full-examples">Minimal and full examples</h4>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>{ &quot;name&quot;: &quot;web&quot;, &quot;exec&quot;: [&quot;/usr/local/bin/web&quot;, &quot;--port&quot;, &quot;8080&quot;], &quot;type&quot;: &quot;simple&quot;, &quot;ready&quot;: &quot;exec&quot; }
+</code></pre></div>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>{
+  &quot;name&quot;: &quot;worker&quot;,
+  &quot;exec&quot;: [&quot;/usr/local/bin/worker&quot;],
+  &quot;type&quot;: &quot;simple&quot;,
+  &quot;ready&quot;: &quot;notify&quot;,
+  &quot;restart&quot;: &quot;on-failure&quot;,
+  &quot;needs&quot;: [&quot;db&quot;],
+  &quot;after&quot;: [&quot;net&quot;],
+  &quot;wants&quot;: [&quot;metrics&quot;],
+  &quot;timeout&quot;: &quot;30s&quot;,
+  &quot;execution&quot;: {
+    &quot;uid&quot;: 1000, &quot;gid&quot;: 1000, &quot;groups&quot;: [27],
+    &quot;directory&quot;: &quot;/var/lib/worker&quot;,
+    &quot;environment&quot;: [&quot;APP_MODE=production&quot;]
+  },
+  &quot;sandbox&quot;: {
+    &quot;no_new_privs&quot;: true,
+    &quot;read_only_paths&quot;: [&quot;/usr&quot;, &quot;/etc/ssl/certs&quot;],
+    &quot;read_write_paths&quot;: [&quot;/var/lib/worker&quot;],
+    &quot;caps&quot;: []
+  },
+  &quot;memory_max&quot;: &quot;256M&quot;,
+  &quot;cpu_max&quot;: &quot;50000 100000&quot;,
+  &quot;pids_max&quot;: 64
+}
+</code></pre></div>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>{ &quot;name&quot;: &quot;migrate-db&quot;, &quot;exec&quot;: [&quot;/usr/local/bin/migrate&quot;], &quot;type&quot;: &quot;oneshot&quot;, &quot;ready&quot;: &quot;exit&quot;, &quot;boot&quot;: true }
+</code></pre></div>
+<h3 id="types-readiness-and-restart">Types, readiness and restart</h3>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col"><code>type</code> / <code>ready</code></th>
+<th scope="col">Started when</th>
+<th scope="col">Ends</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>simple</code> / <code>exec</code></td>
+<td>at once: the process was started</td>
+<td>when the main process exits</td>
+</tr>
+<tr>
+<td><code>simple</code> / <code>notify</code></td>
+<td>the process writes at least one byte to fd 3 (<code>SAHINIT_READY_FD=3</code>) within <code>timeout</code></td>
+<td>when the main process exits</td>
+</tr>
+<tr>
+<td><code>oneshot</code> / <code>exit</code></td>
+<td>the process exits 0 within <code>timeout</code>; the state is then <code>exited</code></td>
+<td>at exit</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>Not ready in time: the process group is killed, the start fails with
+<code>timeout</code>, and it is not restarted.</li>
+<li>A oneshot that exits non-zero is <code>failed</code>.</li>
+<li><code>restart</code> applies to a <code>simple</code> unit whose process exits after it was
+ready (or at any time with <code>ready: exec</code>): <code>always</code> restarts after any exit,
+<code>on-failure</code> after a non-zero exit or a signal. There is no delay between
+restarts. At most 5 restarts in any 30 s; the next exit is then <code>failed</code>
+with <code>restart_limit</code>. A manual start resets the count.</li>
+<li>A stop is never followed by a restart.</li>
+</ul>
+<h4 id="lifecycle">Lifecycle</h4>
+<p>States: <code>stopped</code>, <code>starting</code>, <code>running</code>, <code>stopping</code>, <code>exited</code> (a finished
+oneshot), <code>failed</code>. Stop sends SIGTERM to the process group, waits up to
+<code>timeout</code>, then SIGKILLs. With cgroups, whenever the main process exits for any
+reason everything left in the service's cgroup is killed, and the service has
+ended only when the cgroup is empty; otherwise it fails with <code>cgroup_stuck</code>.
+A stop can therefore take up to twice <code>timeout</code>.</p>
+<p>A oneshot started at boot runs <code>exec</code> as written. After boot, a oneshot runs
+only through the socket's <code>oneshot</code> operation with one argument appended to
+<code>exec</code> (<code>[A-Za-z0-9._-]{1,64}</code> without <code>..</code>, else <code>arg_rejected</code>); <code>ctl start</code>
+answers <code>arg_required</code>. Arguments are never logged.</p>
+<h3 id="dependencies">Dependencies</h3>
+<ul>
+<li><code>needs</code>: the unit starts only when each named unit is running and ready, or
+has exited successfully (a oneshot). A failed one makes the start fail with
+<code>needs_failed</code> (the unit is marked failed); one not yet ready is
+<code>needs_not_ready</code>.</li>
+<li><code>after</code>: ordering only; no requirement.</li>
+<li><code>wants</code>: ordering when the named unit exists; ignored when it does not.</li>
+<li>The whole catalog, including non-boot units, must be acyclic (<code>cycle</code>).</li>
+<li>A boot unit may not <code>needs</code> a non-boot unit (<code>boot_needs</code>).</li>
+<li>Boot runs waves in order; units in one wave start in parallel. A failed
+unit does not stop later waves (except in strict host boot, where any boot
+failure enters recovery).</li>
+<li>Shutdown stops every unit, including ones started by hand, in reverse wave
+order; units in one wave stop in parallel.</li>
+</ul>
+<h3 id="executables">Executables</h3>
+<p><code>exec[0]</code> is resolved once at load, following symlinks one component at a time
+(for example Debian's <code>/bin/sh -&gt; dash</code>), and the resolved file is what runs;
+<code>argv[0]</code> is passed as written.</p>
+<ul>
+<li>Every directory the walk passes through, from <code>/</code>, must be owned by root or
+the supervisor's uid and not group- or other-writable, except a sticky
+directory such as <code>/tmp</code> (<code>exec_perm</code>). A link inside a directory someone
+else can write is refused.</li>
+<li>The resolved file must be a regular file with an execute bit
+(<code>exec_not_file</code>), owned by root or the supervisor's uid and not group- or
+other-writable (<code>exec_perm</code>). A missing component or more than 40 links is
+<code>exec_not_file</code>.</li>
+<li>If it does not resolve at load the unit still loads; the check is repeated
+at every launch, so a program installed later is still checked.</li>
+<li>On Linux the checked file is opened and executed through that file
+descriptor, so the file checked is the file run.</li>
+<li>A <code>#!</code> script's interpreter must be an absolute path that passes the same
+checks and is not itself a script. <code>#!/usr/bin/env ...</code>, <code>#!/bin/busybox env ...</code>, a relative interpreter or a <code>#!</code> line longer than 256 bytes is
+<code>exec_interp</code>. The script is passed to its interpreter as <code>/proc/self/fd/4</code>.</li>
+</ul>
+<h3 id="execution">Execution</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>&quot;execution&quot;: { &quot;uid&quot;: 1000, &quot;gid&quot;: 1000, &quot;groups&quot;: [], &quot;directory&quot;: &quot;/srv/app&quot;, &quot;environment&quot;: [&quot;KEY=value&quot;] }
+</code></pre></div>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Field</th>
+<th scope="col">Type</th>
+<th scope="col">Default</th>
+<th scope="col">Rules</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>uid</code></td>
+<td>integer</td>
+<td>the supervisor's uid</td>
+<td>0 to 4294967294. Given together with <code>gid</code> or not at all.</td>
+</tr>
+<tr>
+<td><code>gid</code></td>
+<td>integer</td>
+<td>the supervisor's gid</td>
+<td>As <code>uid</code>.</td>
+</tr>
+<tr>
+<td><code>groups</code></td>
+<td>array of integers</td>
+<td><code>[]</code> with an identity</td>
+<td>Only with <code>uid</code>/<code>gid</code>; at most 64, unique, each below 4294967295. An explicit identity always replaces the supplementary groups.</td>
+</tr>
+<tr>
+<td><code>directory</code></td>
+<td>string</td>
+<td><code>/</code></td>
+<td>Absolute, clean, at most 4096 bytes, no NUL. Must exist and be reachable by the identity at launch.</td>
+</tr>
+<tr>
+<td><code>environment</code></td>
+<td>array of strings</td>
+<td><code>[]</code></td>
+<td><code>KEY=value</code> literals; at most 128 entries and 16 KiB in total; <code>KEY</code> matches <code>^[A-Za-z_][A-Za-z0-9_]*$</code>, is unique and does not start with <code>SAHINIT_</code>.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Every violation is <code>execution_invalid</code>. IDs are numeric only: there is no
+name-service lookup for exec units. Without <code>uid</code>/<code>gid</code> the service runs as
+the supervisor (root under PID 1). An unprivileged supervisor that cannot set
+the requested credentials fails the start. The environment rules are in
+<a href="/docs/sahinit-units.html#environment-reference">environment</a>.</p>
+<h3 id="sandbox">Sandbox</h3>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>&quot;sandbox&quot;: { &quot;no_new_privs&quot;: true, &quot;read_only_paths&quot;: [&quot;/usr&quot;], &quot;read_write_paths&quot;: [&quot;/var/lib/app&quot;], &quot;caps&quot;: [] }
+</code></pre></div>
+<p>Linux only (<code>sandbox_unsupported</code> elsewhere). The presence of the object turns
+the sandbox on; every key is optional.</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Field</th>
+<th scope="col">Type</th>
+<th scope="col">Default</th>
+<th scope="col">Rules</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>no_new_privs</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Always applied; an explicit <code>false</code> is <code>sandbox_privs</code>.</td>
+</tr>
+<tr>
+<td><code>read_only_paths</code></td>
+<td>array of strings</td>
+<td><code>[]</code></td>
+<td>Paths the service may read beneath.</td>
+</tr>
+<tr>
+<td><code>read_write_paths</code></td>
+<td>array of strings</td>
+<td><code>[]</code></td>
+<td>Paths the service may read and write beneath.</td>
+</tr>
+<tr>
+<td><code>caps</code></td>
+<td>array of strings</td>
+<td><code>[]</code></td>
+<td>Capability names from the closed set: <code>chown</code>, <code>dac_override</code>, <code>fowner</code>, <code>kill</code>, <code>setgid</code>, <code>setuid</code>, <code>net_bind_service</code>, <code>net_admin</code>, <code>sys_admin</code> (<code>sandbox_cap</code>).</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>The unit must set a non-root <code>execution.uid</code> (<code>sandbox_root</code>); the helper
+also refuses to apply a sandbox while it runs as uid 0.</li>
+<li>Paths: absolute, clean, at most 4096 bytes, no NUL (<code>sandbox_path</code>); at most
+64 in total and unique across both lists (<code>sandbox_overlap</code>). Each is
+resolved once at load through the trusted walk (so <code>/lib</code> becomes <code>/usr/lib</code>
+on merged-/usr); a path that does not resolve is kept as written. At launch
+each path is opened without following any symlink: a link or a missing path
+is <code>sandbox_path</code>.</li>
+<li>Landlock: the ABI is detected (1 to 5 are known) and only the rights it
+knows are handled. No Landlock is <code>landlock_unavailable</code>; a right the ABI
+lacks is <code>landlock_abi</code>. Everything outside the listed paths is denied for
+file access. Network access is <strong>not</strong> confined.</li>
+<li>Capabilities: ambient capabilities are cleared and <code>caps</code> is the set the
+helper keeps. Because a sandboxed unit runs as a non-root uid, the helper
+has no capabilities to keep, so a non-empty <code>caps</code> currently fails the start
+with <code>sandbox_cap</code>. Leave it empty. Listing <code>dac_override</code>, <code>fowner</code>,
+<code>chown</code>, <code>setuid</code> or <code>sys_admin</code> also makes the unit
+<a href="/docs/sahinit.html#the-cgroup_trusted-boundary">cgroup-trusted</a>.</li>
+<li>The status <code>sandbox</code> field reports what was applied, for example
+<code>no_new_privs,landlock_v3,caps</code>, and only while a process runs; an
+unsandboxed unit reports <code>none</code>.</li>
+<li>The helper's set-up handshake has a deadline (<code>sandbox_timeout</code>); a kernel
+without <code>openat2</code> (before Linux 5.6) is <code>openat2_unavailable</code>.</li>
+</ul>
+<h3 id="limits">Limits</h3>
+<p>Written into the service's cgroup before the process starts. Needs cgroups.</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Field</th>
+<th scope="col">Type</th>
+<th scope="col">Accepted</th>
+<th scope="col">Writes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memory_max</code></td>
+<td>string</td>
+<td><code>^[1-9][0-9]{0,15}[KMG]?$</code>: bytes, or binary K/M/G; at least <code>1M</code>, at most 2^50 bytes</td>
+<td><code>memory.max</code>, and <code>memory.swap.max</code> = 0 where it exists</td>
+</tr>
+<tr>
+<td><code>cpu_max</code></td>
+<td>string</td>
+<td><code>&quot;QUOTA PERIOD&quot;</code> in microseconds: period 1000 to 1000000, quota from 1000 to 1024 periods</td>
+<td><code>cpu.max</code></td>
+</tr>
+<tr>
+<td><code>pids_max</code></td>
+<td>integer</td>
+<td>1 to 4194304</td>
+<td><code>pids.max</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>A malformed value is <code>limit_invalid</code> and refuses the catalog. A limit whose
+controller the cgroup root does not offer, or any limit with <code>--no-cgroups</code> or
+off Linux, leaves the unit out as <code>cgroup_controller FILE</code> (in strict boot:
+<code>boot_refused</code>). I/O limits, slices and delegating a cgroup to a service are
+not supported.</p>
+<h3 id="sash-units">Sash units</h3>
+<p>A sash unit runs a sash service script through <code>sash --session</code>. Its ordering,
+readiness, stop and restart come from <code>sash --describe</code>, and every privileged
+action the script asks for is checked against its signed grant. See
+<a href="/docs/sahinit.html#sash-services">operations</a> for set-up and
+<a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/design/sash-services-1.md">the sash design</a> for the protocol.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>{
+  &quot;name&quot;: &quot;app&quot;,
+  &quot;sash&quot;: { &quot;file&quot;: &quot;/etc/sahinit/services/app.sash&quot;, &quot;grant&quot;: &quot;/etc/sahinit/grants/app.grant&quot; },
+  &quot;execution&quot;: { &quot;uid&quot;: 990, &quot;gid&quot;: 990 },
+  &quot;sandbox&quot;: { &quot;read_only_paths&quot;: [&quot;/usr&quot;, &quot;/etc/sahinit/services&quot;], &quot;read_write_paths&quot;: [&quot;/srv/app&quot;] }
+}
+</code></pre></div>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Field</th>
+<th scope="col">Type</th>
+<th scope="col">Required</th>
+<th scope="col">Default</th>
+<th scope="col">Rules (token)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td>As for exec units; must also equal the describe output's name (<code>sash_name_mismatch</code>).</td>
+</tr>
+<tr>
+<td><code>sash.file</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td>Absolute, clean path to the service script (<code>sash_file_perm</code>). At load and before every start: resolved by the trusted walk, a regular file owned by root or the supervisor's uid, not group- or other-writable, no setuid, setgid or sticky bit (<code>sash_file_perm</code>).</td>
+</tr>
+<tr>
+<td><code>sash.grant</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td>Absolute path to the signed <code>sash/2</code> grant (<code>sash_grant_perm</code>). The same checks, and mode exactly 0600 (<code>sash_grant_perm</code>).</td>
+</tr>
+<tr>
+<td><code>execution.uid</code>, <code>execution.gid</code></td>
+<td>integers</td>
+<td>yes</td>
+<td></td>
+<td>Non-zero (<code>sash_root</code>). They must equal what the describe output's <code>user</code> and <code>group</code> resolve to through the system user and group databases (<code>sash_identity_mismatch</code>).</td>
+</tr>
+<tr>
+<td><code>sandbox</code></td>
+<td>object</td>
+<td>yes</td>
+<td></td>
+<td>Required (<code>sash_sandbox</code>); rules as above. The unit must not be cgroup-trusted (<code>sash_cgroup_trusted</code>).</td>
+</tr>
+<tr>
+<td><code>restart</code></td>
+<td>string</td>
+<td>no</td>
+<td>from describe</td>
+<td>If set, must equal describe's policy (<code>no</code> equals sash's <code>never</code>) (<code>sash_lifecycle_mismatch</code>).</td>
+</tr>
+<tr>
+<td><code>needs</code>, <code>after</code>, <code>wants</code></td>
+<td>arrays</td>
+<td>no</td>
+<td>from describe</td>
+<td>If set, must be the same set as describe's <code>requires</code>, <code>after</code>, <code>wants</code> (<code>sash_order_mismatch</code>).</td>
+</tr>
+<tr>
+<td><code>boot</code></td>
+<td>bool</td>
+<td>no</td>
+<td><code>true</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>memory_max</code>, <code>cpu_max</code>, <code>pids_max</code></td>
+<td></td>
+<td>no</td>
+<td>none</td>
+<td>As above.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Refused on a sash unit (<code>sash_unit_field</code>): <code>exec</code>, <code>type</code>, <code>ready</code>,
+<code>timeout</code>, <code>execution.groups</code>, <code>execution.directory</code>,
+<code>execution.environment</code>.</p>
+<p><code>sash --describe</code> limits: a ready or stop timeout or a restart delay above 5
+minutes, or a restart burst above 5, is <code>sash_lifecycle_limit</code>. Ordering names
+must be valid unit names (<code>sash_order_mismatch</code>). A non-zero exit, malformed
+output or no <code>start</code>/<code>run</code> entry is <code>sash_describe</code>. <code>sahinit plan</code> does not
+run describe; it checks only the unit file and the file permissions.</p>
+<h3 id="refusal-tokens-by-field">Refusal tokens by field</h3>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Token</th>
+<th scope="col">Cause</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>failed</code></td>
+<td>malformed JSON, <code>null</code>, a wrong type, a missing required field, too many or too long <code>exec</code> entries</td>
+</tr>
+<tr>
+<td><code>unknown_field</code>, <code>duplicate_field</code></td>
+<td>unknown or repeated key; repeated edge; two units with one name</td>
+</tr>
+<tr>
+<td><code>name_invalid</code>, <code>name_mismatch</code></td>
+<td><code>name</code> grammar; file name differs</td>
+</tr>
+<tr>
+<td><code>exec_relative</code></td>
+<td><code>exec[0]</code> not absolute and clean</td>
+</tr>
+<tr>
+<td><code>type_invalid</code>, <code>ready_invalid</code>, <code>restart_invalid</code>, <code>timeout_range</code></td>
+<td>the fields above</td>
+</tr>
+<tr>
+<td><code>edge_empty</code></td>
+<td>an empty dependency name</td>
+</tr>
+<tr>
+<td><code>execution_invalid</code></td>
+<td>any <code>execution</code> rule</td>
+</tr>
+<tr>
+<td><code>sandbox_root</code>, <code>sandbox_privs</code>, <code>sandbox_path</code>, <code>sandbox_overlap</code>, <code>sandbox_cap</code></td>
+<td>sandbox rules</td>
+</tr>
+<tr>
+<td><code>limit_invalid</code></td>
+<td>a limit value</td>
+</tr>
+<tr>
+<td><code>sash_*</code></td>
+<td>sash unit rules above</td>
+</tr>
+<tr>
+<td><code>cycle</code>, <code>missing_needs</code>, <code>missing_after</code>, <code>boot_needs</code></td>
+<td>the dependency graph</td>
+</tr>
+</tbody>
+</table></div>
+<p>All tokens are explained in <a href="/docs/sahinit-reference.html#refusal-and-diagnostic-codes">codes</a>.</p>
+<h2 id="environment-reference">Environment reference</h2>
+<p>sahinit <strong>reads no environment variable of its own</strong>: there is no
+<code>SAHINIT_*</code> configuration variable, and every setting is a flag or a file.
+This page lists what it sets for the processes it starts and the few
+variables that still affect it through the Go runtime and libraries. It is
+derived from <code>internal/unit/execution.go</code>, <code>internal/sandbox</code>,
+<code>internal/hostinit/init_linux.go</code>, <code>internal/supervise/sash*.go</code> and
+<code>internal/bootpolicy/refresh.go</code>.</p>
+<h3 id="variables-sahinit-sets">Variables sahinit sets</h3>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Variable</th>
+<th scope="col">Set for</th>
+<th scope="col">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SAHINIT_READY_FD</code></td>
+<td>exec units with <code>&quot;ready&quot;: &quot;notify&quot;</code>; every process a sash service spawns</td>
+<td><code>3</code>. Write at least one byte to fd 3 to report readiness. The fd is the write end of a pipe; close it when done.</td>
+</tr>
+<tr>
+<td><code>PATH</code></td>
+<td>every service process, the sandbox helper, <code>sash --describe</code>, <code>sash --session</code> and sash-spawned processes</td>
+<td><code>/usr/bin:/bin:/usr/sbin:/sbin</code> unless the unit's (or the spawn's) environment sets <code>PATH</code>, which then replaces it.</td>
+</tr>
+<tr>
+<td><code>PATH</code>, <code>HOME</code>, <code>TERM</code></td>
+<td>the supervisor and the recovery program started by PID 1</td>
+<td>exactly <code>PATH=/usr/sbin:/usr/bin:/sbin:/bin</code>, <code>HOME=/root</code>, <code>TERM=linux</code>, and nothing else.</td>
+</tr>
+</tbody>
+</table></div>
+<p>No other variable is added. In particular sahinit does not set <code>NOTIFY_SOCKET</code>,
+<code>LISTEN_FDS</code>, <code>INVOCATION_ID</code>, <code>HOME</code>, <code>USER</code>, <code>LOGNAME</code> or <code>SHELL</code> for
+services: set what a program needs in <code>execution.environment</code>.</p>
+<h3 id="clean-environment-rules">Clean environment rules</h3>
+<ul>
+<li>
+<p><strong>Services never inherit the supervisor's environment.</strong> A service gets
+exactly its unit's <code>execution.environment</code>, plus the default <code>PATH</code> when it
+sets none, plus <code>SAHINIT_READY_FD=3</code> for notify readiness.</p>
+</li>
+<li>
+<p><code>execution.environment</code> entries are literal <code>KEY=value</code> strings, with no
+shell expansion. At most 128 entries and 16 KiB in total. <code>KEY</code> must match
+<code>^[A-Za-z_][A-Za-z0-9_]*$</code>, must be unique and must not start with
+<code>SAHINIT_</code> (reserved). Any violation is <code>execution_invalid</code> at load.</p>
+</li>
+<li>
+<p>There are no environment files and no per-unit inheritance switch.</p>
+</li>
+<li>
+<p>The sandbox helper (<code>sahinit apply</code>) runs with the service's environment and
+passes it on unchanged (adding only <code>SAHINIT_READY_FD</code>).</p>
+</li>
+<li>
+<p><strong>sash units</strong> may not set <code>execution.environment</code> (<code>sash_unit_field</code>).
+<code>sash --describe</code> and <code>sash --session</code> get only the default <code>PATH</code>.</p>
+</li>
+<li>
+<p><strong>Processes a sash service spawns</strong> get the names the spawn asked for, only
+if each is on the grant's <code>env_names</code> list, matches
+<code>^[A-Z][A-Z0-9_]{0,63}$</code> and is not on the fixed denylist (<code>env_refused</code>
+otherwise). At most 128 entries and 16 KiB. The denylist (copied from
+sash's <code>internal/grant/policy.go</code> and pinned by a test vector) is:</p>
+<ul>
+<li>prefixes <code>LD_</code>, <code>DYLD_</code>, <code>MALLOC_</code>, <code>GIT_</code>;</li>
+<li><code>GCONV_PATH</code>, <code>LOCPATH</code>, <code>NLSPATH</code>, <code>HOSTALIASES</code>, <code>RES_OPTIONS</code>,
+<code>GLIBC_TUNABLES</code>, <code>TZDIR</code>, <code>BASH_ENV</code>, <code>ENV</code>, <code>IFS</code>, <code>SHELLOPTS</code>,
+<code>PYTHONPATH</code>, <code>PYTHONHOME</code>, <code>PYTHONSTARTUP</code>, <code>PYTHONWARNINGS</code>, <code>PERLLIB</code>,
+<code>PERL5LIB</code>, <code>PERL5OPT</code>, <code>PERL5DB</code>, <code>RUBYLIB</code>, <code>RUBYOPT</code>, <code>NODE_OPTIONS</code>,
+<code>NODE_PATH</code>, <code>JAVA_TOOL_OPTIONS</code>, <code>_JAVA_OPTIONS</code>, <code>JDK_JAVA_OPTIONS</code>,
+<code>CLASSPATH</code>, <code>LUA_PATH</code>, <code>LUA_CPATH</code>, <code>OPENSSL_CONF</code>, <code>OPENSSL_ENGINES</code>.</li>
+</ul>
+<p>A secret value passed to a spawn is written only into the child's
+environment: never into logs, status, diagnostics or events. A spawned child
+never dumps core (<code>RLIMIT_CORE</code> is always 0), so a dump cannot carry it.</p>
+</li>
+</ul>
+<h3 id="variables-that-affect-sahinit-itself">Variables that affect sahinit itself</h3>
+<p>sahinit does not read these, but the Go runtime or standard library does, in
+the supervisor's own process (and in <code>sahinit policy</code>, which runs in yours):</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Variable</th>
+<th scope="col">Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GODEBUG</code>, <code>GOMAXPROCS</code>, <code>GOGC</code>, <code>GOMEMLIMIT</code>, <code>GOTRACEBACK</code></td>
+<td>Go runtime behaviour. Under PID 1 the supervisor has none of them.</td>
+</tr>
+<tr>
+<td><code>SSL_CERT_FILE</code>, <code>SSL_CERT_DIR</code></td>
+<td>Where <code>sahinit policy refresh</code> finds the system root certificates (Go's <code>crypto/x509</code> on Linux). A unit launch passes only the unit's own environment, so set them there if needed.</td>
+</tr>
+<tr>
+<td><code>HTTPS_PROXY</code>, <code>HTTP_PROXY</code>, <code>NO_PROXY</code></td>
+<td><strong>Ignored</strong>: the renewal client uses no proxy.</td>
+</tr>
+</tbody>
+</table></div>
+<p>The supervisor's own environment under another init (for example systemd) is
+whatever that init gives it; it does not reach services.</p>
+<h3 id="file-descriptors-for-completeness">File descriptors (for completeness)</h3>
+<p>Not environment variables, but part of the same contract:</p>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Process</th>
+<th scope="col">fd 0, 1, 2</th>
+<th scope="col">Other fds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>exec unit</td>
+<td><code>/dev/null</code>, captured stdout, captured stderr</td>
+<td>fd 3: readiness pipe (notify only). A <code>#!</code> script also keeps fd 4 for its interpreter. Every other fd from 3 up is closed at exec.</td>
+</tr>
+<tr>
+<td><code>sash --session</code></td>
+<td><code>/dev/null</code>, captured stdout, captured stderr</td>
+<td>3: grant bytes, 4: fleet public key, 5: a fresh per-session public key with no private half kept (sash requires one), 6: the verb socket.</td>
+</tr>
+<tr>
+<td>sash-spawned process</td>
+<td><code>/dev/null</code>, its stream (<code>journal</code>, <code>null</code> or a <code>file:</code> path)</td>
+<td>fd 3: readiness pipe.</td>
+</tr>
+<tr>
+<td>PID 1 children</td>
+<td><code>/dev/console</code></td>
+<td>none</td>
+</tr>
+</tbody>
+</table></div>
+
+<p class="source-note">Built from the sash-init repository's reference documentation (docs/reference), which is derived from the source at commit f4eda4c on branch <a href="https://github.com/afterdarksys/sash-init/tree/fix/flaky-tests">fix/flaky-tests</a>. That branch is the reviewed chain of hardening, policy lifetime and renewal, cgroups, PID 1 host init and sash services; it is not yet merged into main.</p>
+
+</article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>

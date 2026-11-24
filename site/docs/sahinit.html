@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>sahinit guide | OpenSAH / dev</title><meta name="description" content="Install and operate sahinit, the sash-init service supervisor: running under systemd or as PID 1, sash services, boot policy, key rotation, upgrade, recovery, troubleshooting and the security model."><meta name="theme-color" content="#202e28"><link rel="canonical" href="https://opensah.dev/docs/sahinit.html"><meta property="og:type" content="website"><meta property="og:title" content="sahinit guide | OpenSAH / dev"><meta property="og:description" content="Install and operate sahinit, the sash-init service supervisor: running under systemd or as PID 1, sash services, boot policy, key rotation, upgrade, recovery, troubleshooting and the security model."><meta property="og:url" content="https://opensah.dev/docs/sahinit.html"><meta property="og:image" content="https://opensah.dev/assets/social.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="preload" href="/assets/atkinson-400.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script></head>
+<body data-theme="docs"><a class="skip" href="#main">Skip to content</a><div class="network"><div class="wrap"><a href="https://opensah.com">After Dark Systems / Service Automation Hub</a><span>Completely Programmable Infrastructure</span></div></div><header class="header"><nav class="nav wrap" aria-label="Main navigation"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH / dev</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button><div class="nav-links" id="site-nav"><a href="/getting-started.html">Start here</a><a href="/tools.html">Tools</a><a href="/docs/">Tool guides</a><a href="/accessible-tooling.html">Accessible tooling</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a class="nav-cta" href="https://opensah.com">Ecosystem ↗</a></div></nav></header>
+<main id="main"><div class="wrap"><div class="page-hero"><p class="eyebrow">OpenSAH / Host init guides</p><h1>sahinit: the sash-init service supervisor.</h1><p>A Go service supervisor with strict JSON units, dependency boot waves, explicit identities, a Landlock sandbox, a cgroup v2 cgroup per service, signed sash services and an experimental Linux PID 1 mode.</p></div><div class="docs-layout"><aside class="docs-nav" aria-label="Documentation"><strong>Documentation / v0.1</strong><a href="/index.html">Overview</a><a href="/getting-started.html">Install & first steps</a><a href="/tools.html">Tool reference</a><a href="/api.html">API reference</a><a href="/architecture.html">Architecture</a><a href="/roadmap.html">Availability & roadmap</a><strong>Suite utilities</strong><a href="/docs/sah-suite.html">What exists and what for</a><strong>Host init guides</strong><a href="/docs/sahinit.html" aria-current="page">sahinit</a><a href="/docs/sahinit-units.html">sahinit units</a><a href="/docs/sahinit-reference.html">sahinit reference</a><strong>Farm tool guides</strong><a href="/docs/">All tool guides</a><a href="/docs/vpscfgfarm.html">vpscfgfarm</a><a href="/docs/badfarm.html">badfarm</a><a href="/docs/goodfarm.html">goodfarm</a><a href="/docs/farmops.html">farmops</a><a href="/docs/oos.html">oos</a><a href="/docs/outofdanger.html">Out of Danger</a><strong>Accessible tooling</strong><a href="/accessible-tooling.html">Overview</a><a href="/docs/missing-utils.html">Missing Utils</a><a href="/docs/rcdo.html">rcdo</a><a href="/docs/prtool.html">prtool</a><strong>File transfer</strong><a href="/transfer/index.html">Protocols, APIs & compatibility</a></aside><article class="docs-content">
+
+<span class="pill">Early development</span> <span class="pill">PID 1 experimental</span> <span class="pill">No tags or releases</span>
+<p><strong>This guide:</strong> <a href="/docs/sahinit.html" aria-current="page">sahinit guide</a> · <a href="/docs/sahinit-units.html">Unit reference</a> · <a href="/docs/sahinit-reference.html">Commands, files & codes</a></p>
+<nav aria-label="On this page"><ul>
+<li><a href="#what">What it is</a></li>
+<li><a href="#guide-pages">The guide</a></li>
+<li><a href="#quick-start">Quick start</a></li>
+<li><a href="#operations-guide">Operations guide</a><ul>
+<li><a href="#requirements">Requirements</a></li>
+<li><a href="#install">Install</a></li>
+<li><a href="#running-under-another-init-supervise">Running under another init (supervise)</a></li>
+<li><a href="#first-boot-as-pid-1">First boot as PID 1</a></li>
+<li><a href="#sash-services">Sash services</a></li>
+<li><a href="#boot-policy">Boot policy</a></li>
+<li><a href="#upgrading">Upgrading</a></li>
+<li><a href="#rollback">Rollback</a></li>
+<li><a href="#recovery">Recovery</a></li>
+<li><a href="#troubleshooting-by-symptom">Troubleshooting by symptom</a></li>
+</ul></li>
+<li><a href="#security-model">Security model</a><ul>
+<li><a href="#trust-assumptions">Trust assumptions</a></li>
+<li><a href="#guarantees">Guarantees</a></li>
+<li><a href="#what-is-not-guaranteed">What is NOT guaranteed</a></li>
+<li><a href="#reporting">Reporting</a></li>
+</ul></li>
+</ul></nav>
+
+<h2 id="what">What it is</h2>
+<p>sahinit is the binary of <a href="https://github.com/afterdarksys/sash-init">sash-init</a>, a Go service supervisor intended to replace systemd as PID 1. Units are strict JSON. It boots them in dependency waves with readiness checks and bounded restarts, runs each under an explicit numeric identity with a clean environment, can confine it with Landlock, puts each service in its own cgroup v2 cgroup with kill-all and memory, CPU and PID limits, and answers on a local control socket that refuses requests from the services themselves. A unit can also name a sash service script: sahinit verifies the script's signed grant before every start and performs its privileged steps itself. <code>sahinit migrate</code> previews conversion from systemd, daemontools and OpenRC. <code>sahinit policy</code> verifies and caches signed boot-policy metadata.</p>
+<div class="notice"><p><strong>Current scope.</strong> <code>sahinit supervise</code> under an existing init with a delegated cgroup is the supported mode. PID 1 mode is experimental: it is tested in QEMU initramfs boots, not on persistent-disk hosts. Boot policy is metadata only: it is verified and cached, and nothing admits or refuses a unit because of it. sash services run with test-made grants and floors; there is no fleet signer and no policy issuer yet. Sandboxed units cannot hold capabilities, and the network is not confined. There are no tags or packaged releases. This guide describes the branch <code>fix/flaky-tests</code>, which is not yet merged into <code>main</code>.</p></div>
+
+<h2 id="guide-pages">The guide</h2>
+<div class="docs-cards">
+<a class="docs-card" href="#operations-guide"><span class="big-label">This page</span><h3>Operations and security</h3><p>Requirements, install, systemd and PID 1, sash services end to end, boot policy, key rotation, upgrade, rollback, recovery, troubleshooting, and what is and is not guaranteed.</p></a>
+<a class="docs-card" href="/docs/sahinit-units.html"><span class="big-label">Units</span><h3>Unit reference</h3><p>Every unit field: exec and sash units, execution, sandbox, limits, readiness, restart, dependencies; the environment and file descriptors children get.</p></a>
+<a class="docs-card" href="/docs/sahinit-reference.html"><span class="big-label">Reference</span><h3>Commands, files and codes</h3><p>Every command and flag, every file and its ownership rules, the control protocol, and every refusal and diagnostic code.</p></a>
+</div>
+
+<h2 id="quick-start">Quick start</h2>
+<p>Build from source (Go 1.26), write one unit, check the plan and run the supervisor under your current init. On Linux <code>supervise</code> needs a delegated cgroup v2; for a first try without one, add <code>--no-cgroups</code>.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>git clone https://github.com/afterdarksys/sash-init.git
+cd sash-init &amp;&amp; git checkout fix/flaky-tests
+./build.sh
+go build -o /tmp/sahinit ./cmd/sahinit
+
+sudo install -d -o root -g root -m 755 /etc/sahinit/units
+sudo tee /etc/sahinit/units/hello.json &gt;/dev/null &lt;&lt;'EOF'
+{ "name": "hello", "exec": ["/bin/sleep", "3600"], "type": "simple", "ready": "exec",
+  "execution": { "uid": 65534, "gid": 65534 } }
+EOF
+sudo install -d -m 700 /run/sahinit
+
+sudo /tmp/sahinit plan --dir /etc/sahinit/units
+sudo /tmp/sahinit supervise --dir /etc/sahinit/units --socket /run/sahinit/sahinit.sock --no-cgroups &amp;
+sudo /tmp/sahinit ctl --socket /run/sahinit/sahinit.sock status hello</code></pre></div>
+<p><code>plan</code> prints one boot wave per line and names every refused or cgroup-trusted unit on stderr. <code>ctl</code> prints the JSON response and exits 0 when it says <code>"ok":true</code>.</p>
+<h2 id="operations-guide">Operations guide</h2>
+<p>How to install, boot, configure, upgrade, roll back, recover and troubleshoot
+sahinit. Flags are in <a href="/docs/sahinit-reference.html#command-line-reference">cli</a>, unit fields in <a href="/docs/sahinit-units.html#unit-reference">units</a>, files in
+<a href="/docs/sahinit-reference.html#files-and-settings-reference">config files</a> and tokens in <a href="/docs/sahinit-reference.html#refusal-and-diagnostic-codes">codes</a>.</p>
+<p><strong>Scope today.</strong> <code>supervise</code> is the supported way to run sahinit: under an
+existing init with a delegated cgroup v2. PID 1 mode is <strong>experimental</strong>: it is
+exercised in QEMU initramfs boots, not on persistent-disk hosts. Boot policy is
+<strong>metadata only</strong>: nothing admits or blocks a unit from it. sash services run
+with test-made grants and floors; there is no fleet signer yet.</p>
+<h3 id="requirements">Requirements</h3>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Need</th>
+<th scope="col">Why</th>
+<th scope="col">Without it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Linux</td>
+<td>sandbox, cgroups, PID 1</td>
+<td><code>supervise</code> runs with process groups (<code>unsupported</code> cgroups) and no sandbox (<code>sandbox_unsupported</code>); for development only</td>
+</tr>
+<tr>
+<td>cgroup2 mounted at <code>/sys/fs/cgroup</code>, the supervisor's cgroup delegated (writable)</td>
+<td>one cgroup per service, kill-all, limits, peer checks</td>
+<td><code>cgroup_unavailable</code>; <code>--no-cgroups</code> falls back to process groups</td>
+</tr>
+<tr>
+<td><code>cpu</code>, <code>memory</code>, <code>pids</code> controllers offered to the root</td>
+<td>limits</td>
+<td>units with that limit are left out (<code>cgroup_controller</code>)</td>
+</tr>
+<tr>
+<td>Linux 5.7 (<code>clone3</code> with <code>CLONE_INTO_CGROUP</code>)</td>
+<td>child joins its cgroup before exec</td>
+<td>the helper path is used automatically</td>
+</tr>
+<tr>
+<td>Linux 5.14 (<code>cgroup.kill</code>)</td>
+<td>kill-all</td>
+<td>freeze-and-kill fallback; PID 1 mode requires it</td>
+</tr>
+<tr>
+<td>Linux 5.6 (<code>openat2</code>)</td>
+<td>sandbox paths, sash file verbs</td>
+<td><code>openat2_unavailable</code></td>
+</tr>
+<tr>
+<td>Landlock (5.13+, enabled in <code>lsm=</code>)</td>
+<td>sandbox</td>
+<td><code>landlock_unavailable</code> for sandboxed units</td>
+</tr>
+<tr>
+<td>Linux 5.3 (pidfd); 6.5 (<code>SO_PEERPIDFD</code>, amd64/arm64)</td>
+<td>race-free signalling and peer pinning</td>
+<td>start-time fallback with a documented residual race</td>
+</tr>
+<tr>
+<td><code>/proc</code></td>
+<td>executing the checked file through <code>/proc/self/fd</code></td>
+<td>launches fail; PID 1 mounts it</td>
+</tr>
+</tbody>
+</table></div>
+<p>The VM suite runs Debian's Linux 6.1 amd64 kernel; the Docker suite runs
+whatever kernel the Docker host has.</p>
+<h3 id="install">Install</h3>
+<p>sahinit is one static Go binary. There is no package or release download yet;
+build from the repository (Go 1.26):</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>git clone https://github.com/afterdarksys/sash-init.git
+cd sash-init
+./build.sh                                  # tests, vet, Linux cross-compile
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o sahinit ./cmd/sahinit
+install -o root -g root -m 755 sahinit /usr/local/sbin/sahinit
+install -d -o root -g root -m 755 /etc/sahinit /etc/sahinit/units
+</code></pre></div>
+<p>The binary, every directory above it, the unit directory and every unit file
+must be owned by root (or the supervisor's uid) and not group- or
+other-writable. Check a catalog before running it:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit plan --dir /etc/sahinit/units
+</code></pre></div>
+<p><code>plan</code> prints the boot waves and names every refused or cgroup-trusted unit.</p>
+<h3 id="running-under-another-init-supervise">Running under another init (supervise)</h3>
+<h4 id="systemd">systemd</h4>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code># /etc/systemd/system/sahinit.service
+[Unit]
+Description=sahinit service supervisor
+
+[Service]
+ExecStart=/usr/local/sbin/sahinit supervise --dir /etc/sahinit/units --socket /run/sahinit/sahinit.sock
+ExecReload=/usr/local/sbin/sahinit ctl --socket /run/sahinit/sahinit.sock status
+Delegate=yes
+RuntimeDirectory=sahinit
+RuntimeDirectoryMode=0700
+KillMode=mixed
+TimeoutStopSec=11min
+
+[Install]
+WantedBy=multi-user.target
+</code></pre></div>
+<ul>
+<li><code>Delegate=yes</code> makes the unit's cgroup writable by sahinit, which becomes the
+cgroup root: it moves itself into <code>ROOT/supervisor</code> and creates
+<code>ROOT/NAME.service</code> per service. systemd's <code>ExecReload</code> runs in
+<code>ROOT/.control</code>, which sahinit accepts as a control peer while the root is
+protected (a controller enabled below it).</li>
+<li>The socket directory must be writable only by its owner; <code>/tmp</code> is refused.</li>
+<li><code>TimeoutStopSec</code> should cover the longest unit timeout twice (stop grace
+plus cgroup drain) for the slowest shutdown wave.</li>
+<li>SIGTERM stops sahinit gracefully: every service is stopped in reverse
+dependency order.</li>
+</ul>
+<h4 id="docker-tests-and-development">Docker (tests and development)</h4>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>docker run --rm --init --privileged --cgroupns=private ... sahinit supervise --dir /units --socket /run/sahinit/s.sock
+</code></pre></div>
+<p>The container's root cgroup must be emptied into a leaf first so controllers
+can be enabled (see <code>internal/cgroup/cgtest</code>). Do not run sahinit as the
+container's PID 1 (that is init mode); use <code>--init</code>.</p>
+<h4 id="allowing-other-users-to-use-the-socket">Allowing other users to use the socket</h4>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit supervise ... --uid 0 --uid 1001 --gid 1001
+</code></pre></div>
+<p><code>--uid</code> replaces the default (the supervisor's own uid), so list it too. With
+another uid the socket is 0660 with group <code>--gid</code>. Every request is still
+checked by peer credentials, and a request from inside a service is
+<code>peer_supervised</code>.</p>
+<h3 id="first-boot-as-pid-1">First boot as PID 1</h3>
+<p>Experimental. The host contract: an initramfs (or the kernel) has already made
+the local root available; sahinit does not discover storage, load modules or
+configure the network (those are services).</p>
+<ol>
+<li>Build a static binary (above) and install it on the root, for example as
+<code>/sbin/sahinit</code>, with the catalog in <code>/etc/sahinit/units</code>.</li>
+<li>Boot with <code>init=/sbin/sahinit</code> (or install it as the initramfs <code>/init</code>). As
+PID 1 every argument is an init flag; the defaults are
+<code>--dir /etc/sahinit/units --socket /run/sahinit/control.sock --shutdown-timeout 30s</code>.</li>
+<li>Strongly consider <code>--recovery /sbin/your-recovery-program</code> (a local console
+program run as root). There is none by default.</li>
+<li>Verify in a VM first: <code>python3 scripts/test-boot.py</code>.</li>
+</ol>
+<p>What PID 1 does, in order: makes <code>/</code> mount propagation private; mounts
+<code>/proc</code>, <code>/sys</code>, <code>/dev</code>, <code>/run</code> and <code>/sys/fs/cgroup</code> where missing; opens
+<code>/dev/console</code>; disables Ctrl-Alt-Del's immediate reboot (it becomes SIGINT);
+creates <code>/run/sahinit</code> (0700) and <code>/sys/fs/cgroup/sahinit/supervisor</code>; checks
+for <code>cgroup.kill</code>; enables <code>cpu</code>, <code>memory</code> and <code>pids</code>; starts
+<code>sahinit supervise --boot-strict ...</code> in <code>/sys/fs/cgroup/sahinit/supervisor</code>
+with only <code>PATH</code>, <code>HOME=/root</code> and <code>TERM=linux</code>; then reaps every orphan.</p>
+<p>In strict boot <strong>every boot unit is essential</strong>: any refused unit file or
+limit, a graph error, a failed boot unit or an unexpectedly exited
+long-running boot unit stops the supervisor, and PID 1 enters recovery. A
+oneshot that exited 0 and a unit stopped with <code>ctl stop</code> are fine. Test a
+catalog with plain <code>supervise</code> (without <code>--boot-strict</code>) before booting it.</p>
+<h4 id="power-and-signals">Power and signals</h4>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Signal to PID 1</th>
+<th scope="col">Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SIGTERM or SIGUSR2</td>
+<td>power off</td>
+</tr>
+<tr>
+<td>SIGINT (also Ctrl-Alt-Del)</td>
+<td>reboot</td>
+</tr>
+<tr>
+<td>SIGUSR1</td>
+<td>halt</td>
+</tr>
+<tr>
+<td>SIGHUP</td>
+<td>retry setup and boot, once the supervisor and recovery program are gone</td>
+</tr>
+</tbody>
+</table></div>
+<p>Shutdown: SIGTERM to the supervisor and up to <code>--shutdown-timeout</code> for it to
+stop every service in reverse order; then SIGTERM and SIGKILL to every
+remaining process (1 s each); sync; unmount every non-pseudo filesystem,
+deepest first, remounting busy ones read-only (root last); sync; the power
+operation. PID 1 never exits, even if the kernel refuses it.</p>
+<h3 id="sash-services">Sash services</h3>
+<p>A sash unit runs a sash service script; sahinit verifies a signed grant before
+every start and performs the script's privileged verbs itself. Set-up, end to
+end:</p>
+<ol>
+<li><strong>Install sash</strong> at a root-owned path, for example <code>/usr/bin/sash</code> (the
+default of <code>--sash</code>). It must pass the executable checks.</li>
+<li><strong>Fleet key.</strong> Install the fleet's Ed25519 public key (the signer keeps the
+private key; sahinit never holds it):<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>install -o root -g root -m 644 fleet.pub /etc/sahinit/fleet.pub   # 32 raw bytes or 64 hex digits
+</code></pre></div>
+</li>
+<li><strong>State directory</strong> for floors and the mount table, private to the
+supervisor's uid:<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>install -d -o root -g root -m 700 /var/lib/sahinit/sash
+</code></pre></div>
+</li>
+<li><strong>Service account.</strong> sash never runs as root: create a user and group, for
+example <code>app</code> (uid/gid 990). The script's <code>user</code> and <code>group</code> must name
+them.</li>
+<li><strong>Service script and grant</strong>, root-owned; the grant exactly 0600:<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>install -d -o root -g root -m 755 /etc/sahinit/services /etc/sahinit/grants
+install -o root -g root -m 644 app.sash /etc/sahinit/services/app.sash
+install -o root -g root -m 600 app.grant /etc/sahinit/grants/app.grant
+</code></pre></div>
+The grant (<code>sash/2</code>, purpose <code>service</code>) must name <code>&quot;service&quot;:&quot;app&quot;</code> and the
+same <code>user</code>/<code>group</code>, and list every program the script spawns (<code>exec</code>),
+every env name (<code>env_names</code>), the file roots (<code>file_read</code>, <code>file_write</code>),
+mount points and sources (<code>mounts</code>, <code>mount_sources</code>).</li>
+<li><strong>Floor</strong> (optional but recommended): a signed <code>sahinit-sash-floor/1</code>
+document raises the minimum grant serial for the service:<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit sash floor-install --dir /var/lib/sahinit/sash --fleet-pub /etc/sahinit/fleet.pub app.floor
+sahinit sash floor-show --dir /var/lib/sahinit/sash --fleet-pub /etc/sahinit/fleet.pub
+</code></pre></div>
+Run these as the supervisor's uid (root). Without a floor every serial is
+admitted.</li>
+<li><strong>Unit</strong> <code>/etc/sahinit/units/app.json</code>:<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>{
+  &quot;name&quot;: &quot;app&quot;,
+  &quot;sash&quot;: { &quot;file&quot;: &quot;/etc/sahinit/services/app.sash&quot;, &quot;grant&quot;: &quot;/etc/sahinit/grants/app.grant&quot; },
+  &quot;execution&quot;: { &quot;uid&quot;: 990, &quot;gid&quot;: 990 },
+  &quot;sandbox&quot;: { &quot;read_only_paths&quot;: [&quot;/usr&quot;, &quot;/etc/sahinit/services&quot;], &quot;read_write_paths&quot;: [&quot;/srv/app&quot;] }
+}
+</code></pre></div>
+</li>
+<li><strong>Run</strong> with the sash flags (for PID 1, the same flags go to <code>init</code>):<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit supervise --dir /etc/sahinit/units --socket /run/sahinit/sahinit.sock \
+  --sash /usr/bin/sash --sash-fleet-pub /etc/sahinit/fleet.pub --sash-floor-dir /var/lib/sahinit/sash
+</code></pre></div>
+At start sahinit runs <code>sash --describe</code> for each sash unit (as its uid,
+sandboxed, 5 s, in a scratch cgroup) and derives ordering, readiness, stop
+and restart from it. A unit that fails is left out with <code>TOKEN FILE</code>.</li>
+<li><strong>Operate</strong>: <code>ctl status app</code> shows the grant serial, the entries run and
+the process name table; <code>ctl reload app</code> and <code>ctl check app</code> run those
+entries; <code>ctl stop app</code> runs the <code>stop</code> entry, then kills the cgroup and
+unmounts the service's mounts.</li>
+</ol>
+<p>Revoking a grant: install a floor with <code>min_serial</code> above the bad grant's
+serial. The next start of that service fails with <code>sash_grant_revoked</code> (logged
+<code>sash_grant app sash_grant_revoked</code>), without restart. A running service is
+not stopped by a floor; stop and start it.</p>
+<h4 id="rotating-the-sash-fleet-key">Rotating the sash fleet key</h4>
+<p>There is one fleet key. Floors on disk verify only with the key that signed
+them, and an install compares against the existing floor, so a floor signed by
+the old key fails closed (<code>sash_floor_store_failed</code>) once the new key is in
+place. Rotate with the supervisor stopped:</p>
+<ol>
+<li>Have the signer issue, with the <strong>new</strong> key, a grant for every sash service
+(serial at or above its current floor) and a floor for every service that
+has one (<code>min_serial</code> at least the current one). Record the current floors:
+<code>sahinit sash floor-show --dir D --fleet-pub OLD.pub</code>.</li>
+<li>Stop the supervisor (under PID 1: boot into recovery or another init).</li>
+<li>Move the old floor files out of the state directory
+(<code>mv D/*.floor /root/old-floors/</code>). Until step 5 there is no floor.</li>
+<li>Install the new key at the <code>--sash-fleet-pub</code> path (root, 0644).</li>
+<li>Install the new floors: <code>sahinit sash floor-install --dir D --fleet-pub NEW.pub FILE</code>.</li>
+<li>Install the new grants (root, 0600).</li>
+<li>Start the supervisor; check <code>ctl status</code>.</li>
+</ol>
+<p>Because steps 3 to 6 happen with nothing running, no start sees the gap.</p>
+<h3 id="boot-policy">Boot policy</h3>
+<p>Boot policy is <strong>metadata only</strong> today: these commands verify and store signed
+documents; the supervisor does not read them. Formats and rules are in
+<a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/boot-policy.md">boot policy</a>.</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>install -d -o root -g root -m 700 /var/lib/sahinit-policy
+install -o root -g root -m 644 boot-trust.json /etc/sahinit/boot-trust.json
+sahinit policy verify --trust /etc/sahinit/boot-trust.json --document policy.json
+sahinit policy cache  --trust /etc/sahinit/boot-trust.json --document policy.json --cache /var/lib/sahinit-policy
+sahinit policy status --trust /etc/sahinit/boot-trust.json --cache /var/lib/sahinit-policy
+</code></pre></div>
+<h4 id="never-lifetime-the-default"><code>never</code> lifetime (the default)</h4>
+<p>A version-2 policy with <code>&quot;lifetime&quot;:&quot;never&quot;</code> has no expiry and needs no clock.
+It ends only when a higher sequence replaces it or a floor revokes it. To
+revoke, install a signed <code>sahinit-boot-floor/1</code> floor:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit policy floor-install --trust T --document floor.json --cache C
+sahinit policy floor-show --trust T --cache C
+sahinit policy status --trust T --cache C   # a policy below the floor: state revoked, exit 1
+</code></pre></div>
+<p>Floors only rise (<code>policy_floor_rollback</code>); the same floor again is a no-op;
+a different floor at the same <code>min_sequence</code> is <code>policy_floor_conflict</code>.</p>
+<h4 id="renew-lifetime"><code>renew</code> lifetime</h4>
+<p>A <code>renew</code> policy is valid in <code>[not_before, expires_at)</code>, in grace until
+<code>offline_until</code>, then expired. Reading its state needs <code>--trust-system-clock</code>,
+an explicit assertion that the system clock is trustworthy. Renewal is the
+optional worker <a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/examples/policy-refresh.json"><code>examples/policy-refresh.json</code></a>:</p>
+<div class="code-block"><button class="copy-button" type="button" aria-label="Copy code">Copy</button><pre><code>sahinit policy refresh --trust T --cache C --endpoint https://ISSUER/PATH \
+  --credential /var/lib/sahinit-refresh/credential --trust-system-clock
+</code></pre></div>
+<p>On a <code>never</code> host it prints <code>not_renewing</code> and exits 0 without any network
+access. Give the unit <code>&quot;restart&quot;: &quot;on-failure&quot;</code>. There is no issuer yet.</p>
+<h4 id="rotating-boot-policy-keys">Rotating boot-policy keys</h4>
+<p>The trust file holds up to 16 keys; each document names its <code>key_id</code>. A
+cached policy or floor signed by a key that is no longer in the trust file
+fails verification, which also blocks normal replacement. Rotate with overlap:</p>
+<ol>
+<li>Add the new key to <code>keys</code> in the trust file, keeping the old one.</li>
+<li>Install a policy signed with the new key at a higher <code>sequence</code>
+(<code>policy cache</code>).</li>
+<li>If a floor is installed, install a floor signed with the new key and a
+<strong>higher</strong> <code>min_sequence</code> (at most the new policy's sequence). Re-signing
+the same payload is treated as the same floor and keeps the old file.</li>
+<li><code>policy status</code> and <code>policy floor-show</code> must succeed.</li>
+<li>Remove the old key from the trust file; run <code>policy status</code> again.</li>
+</ol>
+<p>If the old key was removed too early, put it back, or (an administrator's
+decision that discards anti-rollback state) remove <code>policy.json</code> and
+<code>floor.json</code> from the cache and install fresh documents.</p>
+<h3 id="upgrading">Upgrading</h3>
+<ul>
+<li><strong>Under another init:</strong> replace the binary atomically
+(<code>install -m 755 sahinit /usr/local/sbin/sahinit.new &amp;&amp; mv ... sahinit</code>),
+then restart the service. Stopping the supervisor stops every service; the
+new one cleans leftover service cgroups (<code>cgroup_leftover</code>) and sash mounts
+(<code>sash_mount_leftover</code>) and boots again. The supervisor re-executes its own
+binary as the sandbox helper for every launch, so restart it promptly after
+replacing the file rather than running a new helper under an old supervisor.</li>
+<li><strong>PID 1:</strong> replace the binary and reboot. PID 1 does not re-execute itself.</li>
+<li><strong>Units:</strong> there is no live reload. Edit the catalog, check it with
+<code>sahinit plan</code>, and restart the supervisor.</li>
+<li><strong>State:</strong> policy caches, policy floors and sash floors only rise and are
+read by any version that has them; an upgrade does not touch them.</li>
+</ul>
+<h3 id="rollback">Rollback</h3>
+<p>Keep the previous binary (<code>/usr/local/sbin/sahinit.prev</code>). To roll back,
+move it into place and restart the supervisor (or reboot for PID 1). A
+rolled-back binary that predates a feature refuses units using it (for
+example <code>unknown_field</code> for a newer field), so roll the catalog back with it.
+Floors and the policy cache are not rolled back by design. For PID 1 keep a
+bootloader entry with the previous init (<code>init=/lib/systemd/systemd</code>, or
+<code>init=/bin/sh</code> for a shell).</p>
+<h3 id="recovery">Recovery</h3>
+<p>When the supervisor exits under PID 1 (a strict-boot failure, a crash), PID 1
+kills everything in <code>/sys/fs/cgroup/sahinit</code>, then starts <code>--recovery</code> on the
+console as root if one is configured (started again shortly after it
+exits, so it is always available). Repair the catalog from recovery, then send SIGHUP to PID 1
+(<code>kill -HUP 1</code>): once the recovery program exits, PID 1 re-runs setup and
+starts the supervisor again.</p>
+<ul>
+<li>If the <strong>init flags</strong> are invalid, PID 1 logs
+<code>sahinit-init: recovery: setup: invalid init configuration</code> and falls back to
+the defaults <strong>without</strong> a recovery program. SIGHUP cannot fix this, because
+the flags do not change. Reboot with corrected kernel arguments, or with
+another init.</li>
+<li>Without a recovery program, PID 1 stays up and answers the power signals
+and SIGHUP (which retries boot at once).</li>
+<li>The console log lines start with <code>sahinit-init:</code> (PID 1) or are the
+supervisor's tokens.</li>
+</ul>
+<h3 id="troubleshooting-by-symptom">Troubleshooting by symptom</h3>
+<div class="table-scroll"><table class="status-table">
+<thead>
+<tr>
+<th scope="col">Symptom</th>
+<th scope="col">Likely cause</th>
+<th scope="col">Check or fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>supervise</code> exits 2 with <code>cgroup_unavailable</code></td>
+<td>not delegated; cgroup v1; read-only cgroupfs</td>
+<td><code>Delegate=yes</code>; <code>stat -fc %T /sys/fs/cgroup</code> is <code>cgroup2fs</code>; or <code>--no-cgroups</code></td>
+</tr>
+<tr>
+<td><code>cgroup_busy</code> / <code>socket_busy</code></td>
+<td>another supervisor on the same cgroup root or socket</td>
+<td>stop it</td>
+</tr>
+<tr>
+<td><code>socket_perm</code></td>
+<td>socket directory is <code>/tmp</code> or group-writable</td>
+<td><code>install -d -m 700 /run/sahinit</code></td>
+</tr>
+<tr>
+<td>a unit is missing from <code>status</code></td>
+<td>it was left out at load</td>
+<td>the start-up stderr has <code>TOKEN FILE</code>; run <code>sahinit plan</code></td>
+</tr>
+<tr>
+<td>the whole catalog refuses with one token</td>
+<td>a parse error in one file refuses the catalog</td>
+<td><code>sahinit plan --dir DIR</code> prints the token; check every file</td>
+</tr>
+<tr>
+<td><code>exec_perm</code></td>
+<td>a directory on the program's path is user-owned or group-writable</td>
+<td><code>namei -l /path/to/program</code></td>
+</tr>
+<tr>
+<td><code>exec_interp</code></td>
+<td><code>#!/usr/bin/env ...</code></td>
+<td>name the real interpreter</td>
+</tr>
+<tr>
+<td><code>ctl</code> says <code>peer_supervised</code></td>
+<td>run from inside a service, a service's session, or the root of an unprotected cgroup root</td>
+<td>run from an admin shell outside the root; see <code>cgroup_root_unprotected</code></td>
+</tr>
+<tr>
+<td><code>ctl</code> says <code>uid_denied</code></td>
+<td>uid not allowed</td>
+<td>run as the supervisor's uid or add <code>--uid</code></td>
+</tr>
+<tr>
+<td><code>ctl start</code> on a oneshot says <code>arg_required</code></td>
+<td>oneshots run at boot or through the <code>oneshot</code> op</td>
+<td>expected</td>
+</tr>
+<tr>
+<td>a notify service times out</td>
+<td>it never writes to fd 3</td>
+<td>write one byte to <code>$SAHINIT_READY_FD</code></td>
+</tr>
+<tr>
+<td>a service restarts then <code>restart_limit</code></td>
+<td>crash loop (5 in 30 s)</td>
+<td><code>ctl diagnostics NAME</code>: stderr tail and <code>last_exit</code></td>
+</tr>
+<tr>
+<td><code>cgroup_stuck</code></td>
+<td>a process in <code>D</code> state</td>
+<td>find it in <code>ROOT/NAME.service/cgroup.procs</code></td>
+</tr>
+<tr>
+<td>a sandboxed unit fails with <code>sandbox_cap</code></td>
+<td>non-empty <code>caps</code></td>
+<td>remove <code>caps</code></td>
+</tr>
+<tr>
+<td><code>landlock_unavailable</code></td>
+<td>Landlock not in <code>lsm=</code></td>
+<td>check <code>/sys/kernel/security/lsm</code></td>
+</tr>
+<tr>
+<td>a sash unit is left out with <code>sash_fleet_key</code> / <code>sash_floor_store</code> / <code>sash_cgroups</code></td>
+<td>sash flags missing, or <code>--no-cgroups</code></td>
+<td>add <code>--sash-fleet-pub</code>, <code>--sash-floor-dir</code></td>
+</tr>
+<tr>
+<td><code>sash_describe</code></td>
+<td>sash missing, script error, or describe over 5 s</td>
+<td>run <code>sash --describe FILE</code> as the service user</td>
+</tr>
+<tr>
+<td><code>sash_identity_mismatch</code></td>
+<td>the script's <code>user</code>/<code>group</code> do not resolve to the unit's ids</td>
+<td><code>getent passwd USER</code></td>
+</tr>
+<tr>
+<td>a sash start fails with <code>sash_grant_revoked</code></td>
+<td>serial below the floor</td>
+<td>issue a newer grant</td>
+</tr>
+<tr>
+<td>every sash start fails with <code>sash_floor_store_failed</code></td>
+<td>state directory permissions, or floors signed by an old fleet key</td>
+<td><code>ls -ln</code> the directory (0700, supervisor uid); see key rotation</td>
+</tr>
+<tr>
+<td>PID 1 machine sits at a console after boot</td>
+<td>strict boot failed</td>
+<td>read the log lines before <code>recovery:</code>; fix and <code>kill -HUP 1</code></td>
+</tr>
+<tr>
+<td><code>policy status</code> says <code>clock_uncertain</code></td>
+<td>a <code>renew</code> policy without <code>--trust-system-clock</code></td>
+<td>establish trusted time, pass the flag</td>
+</tr>
+<tr>
+<td><code>policy_store_failed</code></td>
+<td>cache directory not owned by you or group-accessible</td>
+<td><code>chmod 700</code>, owned by the running uid</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="security-model">Security model</h2>
+<p>What sahinit guarantees, what it assumes, and what it does <strong>not</strong> guarantee.
+Consolidated from the <code>Threats:</code> notes in the code and the design decisions in
+<a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/design/hardening-1.md">hardening</a>, <a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/design/cgroups-1.md">cgroups</a>,
+<a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/design/sash-services-1.md">sash services 1</a> and
+<a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/design/sash-services-2.md">2</a>, and
+<a href="https://github.com/afterdarksys/sash-init/blob/fix/flaky-tests/docs/design/policy-lifetime.md">boot-policy lifetime</a>. Where this page and the
+code disagree, the code is right and this page is a bug.</p>
+<h3 id="trust-assumptions">Trust assumptions</h3>
+<ul>
+<li><strong>Root and the supervisor's uid are trusted.</strong> Everything sahinit reads
+that decides what runs as whom (unit files, the unit directory, executables
+and every directory above them, sash scripts and grants, the fleet key, the
+trust file) must be owned by root or the supervisor's uid and not be
+writable by anyone else. Anything else is refused rather than trusted.</li>
+<li><strong>Unit files are untrusted input</strong> in shape: strict JSON, closed key sets,
+no duplicate keys (where <code>encoding/json</code> would silently keep the last),
+size limits, no symlinks.</li>
+<li><strong>The kernel is trusted</strong>: Landlock, cgroup v2, pidfds, <code>openat2</code>.</li>
+<li><strong>The disk is not a security boundary against root.</strong> Whoever is root can
+replace the binary, the catalog or the state directories.</li>
+</ul>
+<h3 id="guarantees">Guarantees</h3>
+<h4 id="what-runs-is-what-was-checked">What runs is what was checked</h4>
+<ul>
+<li><code>exec[0]</code>, <code>#!</code> interpreters, the sash binary and sash scripts are resolved
+once with the trusted walk (every directory from <code>/</code> owned by root or the
+supervisor's uid, not writable by others, sticky directories excepted), so
+nobody else can swap a component between the check and the exec.</li>
+<li>On Linux the checked file is executed <strong>through its open file
+descriptor</strong>, so the inode checked is the inode run.</li>
+<li><code>#!/usr/bin/env</code> and other PATH lookups are refused (<code>exec_interp</code>).</li>
+</ul>
+<h4 id="a-clean-start">A clean start</h4>
+<ul>
+<li>Services never inherit the supervisor's environment; <code>SAHINIT_</code> names are
+reserved.</li>
+<li>Every file descriptor from 3 up is closed at exec except the deliberate ones
+(the readiness pipe; a script's fd 4; a sash session's fds 3 to 6).</li>
+<li>An explicit identity always replaces the supplementary groups.</li>
+</ul>
+<h4 id="sandbox-linux">Sandbox (Linux)</h4>
+<ul>
+<li><code>no_new_privs</code> is always set; a sandboxed unit must run as a non-root uid
+(<code>sandbox_root</code>), checked at load and again in the helper.</li>
+<li>Landlock restricts file access to the listed paths, with the rights the
+kernel's ABI knows; the absence of Landlock, or of a needed right, refuses
+the start rather than weakening it.</li>
+<li>Ambient capabilities are cleared.</li>
+<li>The status claim (<code>no_new_privs,landlock_vN,caps</code>) lists only mechanisms
+that returned success, and only while a process runs.</li>
+</ul>
+<h4 id="the-cgroup_trusted-boundary">The cgroup_trusted boundary</h4>
+<p>With cgroups, each service is its cgroup: everything it forks starts inside
+(<code>clone3(CLONE_INTO_CGROUP)</code> or a helper moved in before exec), and when its
+main process exits for any reason everything left is killed (<code>cgroup.kill</code>)
+and the service has ended only once the cgroup is empty.</p>
+<p>These guarantees hold only for services that <strong>cannot write cgroupfs</strong>.
+A unit is <em>cgroup-trusted</em>, and the guarantees are not promised for it, when:</p>
+<ul>
+<li>it has no sandbox and runs as root or as the supervisor's uid; or</li>
+<li>its sandbox's <code>read_write_paths</code> include <code>/</code>, <code>/sys</code>, <code>/sys/fs</code>,
+<code>/sys/fs/cgroup</code> or a path below it; or</li>
+<li>it keeps <code>dac_override</code>, <code>fowner</code>, <code>chown</code>, <code>setuid</code> or <code>sys_admin</code>.</li>
+</ul>
+<p>Such units are allowed, and named (<code>plan</code> prints <code>cgroup_trusted FILE</code>;
+status has <code>cgroup_trusted: true</code>). A sash unit may never be cgroup-trusted.
+To bound what a trusted unit can do, sahinit sweeps the root: unknown
+cgroups are killed and removed (<code>cgroup_stray_cgroup</code>), strangers in its own
+leaf are killed (<code>cgroup_stray</code>), and processes in the root itself are logged
+(<code>cgroup_root_member</code>). A trusted service that moves into <strong>another service's</strong>
+cgroup cannot be detected.</p>
+<p>Limits (<code>memory_max</code>, <code>cpu_max</code>, <code>pids_max</code>) are applied before the process
+starts; a limit that cannot be applied refuses the unit and is never ignored.</p>
+<h4 id="control-socket">Control socket</h4>
+<ul>
+<li>Local only, one request per connection, 64 KiB frames, strict JSON.</li>
+<li>The socket is created with its final mode in a private directory and
+hard-linked into place, so no chmod follows a link; 0600, or 0660 with an
+explicit group. A stale socket is removed only if it is ours and dead.</li>
+<li><strong>Peer rules</strong>, checked on every request after the frame is read:
+<ul>
+<li>the peer's uid must be allowed (<code>uid_denied</code>);</li>
+<li>the peer must not be supervised (<code>peer_supervised</code>): not in any cgroup
+below the root (a service, the supervisor's leaf, an unknown cgroup), not
+in a process group a service has led while that group has members, and
+still the same process that connected (pinned by <code>SO_PEERPIDFD</code>, a pidfd,
+or its start time);</li>
+<li>a process in the root itself or in systemd's <code>ROOT/.control</code> is accepted
+only while a controller is enabled below the root, because the kernel
+then refuses moves into the root; otherwise sahinit logs
+<code>cgroup_root_unprotected</code> and refuses them too.</li>
+</ul>
+</li>
+<li>So a service, even one running as an allowed uid, cannot stop or restart
+other services through the socket.</li>
+<li>Responses carry tokens, never paths or OS error text.</li>
+</ul>
+<h4 id="signals">Signals</h4>
+<p>On Linux each service's process is signalled through a pidfd, and a
+process-group signal is sent only while the leader is unreaped; SIGKILL goes
+through <code>cgroup.kill</code>. With cgroups a reused pid is never signalled; without
+them, before Linux 6.9, a narrow reuse race remains for the group signal.</p>
+<h4 id="security-sash-services">sash services</h4>
+<ul>
+<li>sash never runs as root (<code>sash_root</code>), always sandboxed, never
+cgroup-trusted, so its cgroup holds everything it spawns.</li>
+<li>The grant is verified by sahinit itself before every start: the fleet key's
+signature over the exact message, the <code>sash/2</code> shape, purpose <code>service</code>, no
+<code>&quot;*&quot;</code>, no <code>/</code> root, <code>exp</code>, the service name, the identity, and the serial
+against the signed floor. sahinit never trusts that sash checked.</li>
+<li>Every verb sash asks for is re-checked against the grant: programs must be
+listed and pass the trusted walk; spawned processes run as the unit's own
+uid and gid under its sandbox; env names must be listed and not denylisted;
+cwd, probes and <code>file:</code> streams must lie under the grant's roots, opened
+without following symlinks; signals go only to processes in the service's
+own name table, never by pid; a check session is read-only.</li>
+<li>File verbs (<code>mkdir</code>, <code>chown</code>, <code>chmod</code>, <code>touch</code>, <code>ln</code>, <code>rm</code>) run as root
+after the checks, with <code>openat2(RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS)</code> from
+the root, on a single final name, never by path. Hard links are refused;
+only targets the service already owns are changed; owners are only the
+service's own identity; modes never include setuid or setgid; creation runs
+with the service's filesystem uid and gid, so a rename race cannot make a
+root-owned file the service's.</li>
+<li>Mounts: types <code>tmpfs</code>, <code>proc</code>, <code>sysfs</code>, <code>devpts</code>, or binds from listed
+sources; always <code>nosuid,nodev</code>; no overlay or other options; the mount point
+must be listed and may not be at, under or above a writable root; each mount
+is tracked by its unique mount ID so umount and remount act only on
+sahinit's own mount.</li>
+<li>Secret env values reach only the child's environment; spawned children
+never dump core.</li>
+<li>Floors only rise, are signed under their own domain (no grant or policy
+verifies as a floor), and fail closed when unreadable or unverifiable.</li>
+</ul>
+<h4 id="boot-policy-metadata">Boot-policy metadata</h4>
+<p>Ed25519 over a domain-separated message and the exact payload bytes; strict
+schema with no unknown, missing or duplicate fields; host and recovery
+binding; local ceilings; renewal ordering (no lower sequence, no silent
+change at the same sequence or generation); a monotonic revocation floor;
+atomic, fsynced installs under a lock; corrupt state fails closed. The
+renewal client uses TLS 1.3 only, the system roots, no proxy, no redirects,
+bounded sizes and times, and a credential that is never printed.</p>
+<h3 id="what-is-not-guaranteed">What is NOT guaranteed</h3>
+<ul>
+<li><strong>Boot policy is not enforced.</strong> It is verified metadata only; no unit or
+job is admitted or refused because of it. Catalog and script hashes in a
+policy are signed claims that nothing checks yet.</li>
+<li><strong>Root on the host</strong> can defeat everything here: replace the binary, edit
+the catalog, delete or restore the policy cache and the floors (the
+anti-rollback guarantee is file-based; there is no TPM or verified boot).</li>
+<li><strong>Cgroup-trusted units</strong> (above) can leave their cgroup or kill sahinit.</li>
+<li><strong>Without cgroups</strong> (<code>--no-cgroups</code>, or not Linux), a service that calls
+<code>setsid</code> escapes kill-all and the peer check, and there are no limits.</li>
+<li><strong>Network access is not confined</strong> by the sandbox.</li>
+<li><strong>Capabilities:</strong> a sandboxed unit cannot be given a capability today
+(<code>sandbox_cap</code>); a sash spawn cannot either (<code>caps_unsupported</code>).</li>
+<li><strong>Peer pinning before Linux 6.5</strong> leaves a narrow pid-reuse window between
+connect and accept.</li>
+<li><strong>The grant's <code>host</code> is not checked</strong>: sahinit has no host name.</li>
+<li><strong>A legitimate mount is visible host-wide</strong>: mounts are made in sahinit's
+own mount namespace.</li>
+<li><strong>Output tails and events are not an audit log</strong>: they are in memory,
+bounded, lost on exit, and contain whatever the service printed, secrets
+included.</li>
+<li><strong><code>--trust-system-clock</code> is an assertion, not authentication</strong>: time is
+never established from a policy or from disk.</li>
+<li><strong>The recovery program runs as root on the console</strong> with no
+authentication added by sahinit; provision an authenticated one.</li>
+<li><strong>PID 1 mode is experimental</strong>: persistent-disk teardown, storage
+discovery, a hardware watchdog and switch-root are not provided or proven.</li>
+<li><strong>Old-kernel fallbacks</strong> (no <code>close_range</code>, older Landlock ABIs, no
+<code>cgroup.kill</code>, no <code>clone3</code> into a cgroup) are tested only through hooks,
+not on real kernels.</li>
+</ul>
+<h3 id="reporting">Reporting</h3>
+<p>Report a way past any of these rules privately to the maintainers rather than
+in a public issue.</p>
+
+<p class="source-note">Built from the sash-init repository's reference documentation (docs/reference), which is derived from the source at commit f4eda4c on branch <a href="https://github.com/afterdarksys/sash-init/tree/fix/flaky-tests">fix/flaky-tests</a>. That branch is the reviewed chain of hardening, policy lifetime and renewal, cgroups, PID 1 host init and sash services; it is not yet merged into main.</p>
+
+</article></div></div></main>
+<footer class="footer"><div class="wrap"><div class="footer-grid"><div><a class="brand" href="https://opensah.com"><span class="brand-mark" aria-hidden="true">&gt;_</span>OpenSAH</a><p>Completely Programmable Infrastructure.<br>Built from the work of running real systems.</p></div><div><h3>Platform</h3><a href="https://opensah.io">Service Automation Hub</a><a href="https://computeapi.io">ComputeAPI</a><a href="https://systemapi.io">SystemAPI</a></div><div><h3>Build &amp; operate</h3><a href="https://sah.sh">The shell</a><a href="https://opensah.com/tools.html">All tools</a><a href="https://opensah.dev/getting-started.html">Installation</a><a href="https://opensah.dev/api.html">API reference</a></div><div><h3>Project</h3><a href="https://opensah.dev/roadmap.html">Availability &amp; roadmap</a><a href="https://github.com/afterdarksys">GitHub</a><a href="mailto:support@afterdarksys.com">Contact</a><a href="https://afterdarksys.com">After Dark Systems</a></div></div><div class="footer-bottom"><span>© 2026 After Dark Systems</span><span>Observe. Decide. Execute. Verify.</span></div></div></footer></body></html>
